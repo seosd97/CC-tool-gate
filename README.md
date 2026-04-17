@@ -68,7 +68,8 @@ Optional:
 `cc-tool-gate` always writes audit logs to the local filesystem. To ship those
 logs off-box, set `STORAGE_BACKEND` to one of:
 
-- `none` (default) — local JSONL only, no upload worker.
+- `none` (default) — local JSONL only. Rotated files move from
+  `pending/` to `uploaded/` and are pruned after 7 days.
 - `r2` — Cloudflare R2.
 - `s3` — AWS S3 or any S3-compatible service.
 
@@ -250,9 +251,11 @@ Set `CC_TOOL_GATE_TOKEN` in your shell to the same value as the server's
 - Live writes go to `${LOGS_DIR}/current.jsonl` (one JSON object per line).
 - Rotation: `60s` OR `5MB`, whichever comes first. The rotated file is
   gzipped and moved to `${LOGS_DIR}/pending/`.
-- If a storage backend is configured (`STORAGE_BACKEND` is `r2` or `s3`),
-  the background worker uploads `pending/*.jsonl.gz` via that backend,
-  moves them to `uploaded/`, and deletes uploaded files older than 7 days.
+- The background worker scans `pending/*.jsonl.gz`, uploads each via the
+  configured backend (a no-op in `STORAGE_BACKEND=none`), moves them to
+  `uploaded/`, and deletes uploaded files older than 7 days.
+- Files that fail to upload `UPLOAD_MAX_ATTEMPTS` times in a row are moved
+  to `${LOGS_DIR}/dead-letter/` for manual inspection.
 - Storage key layout (same for every backend):
   `decisions/dt=YYYY-MM-DD/host=${HOSTNAME}/<unix>-<rand4>.jsonl.gz`.
   For example, on R2 the full URL is
@@ -298,9 +301,11 @@ sensitive payload will land in `current.jsonl` and, if `STORAGE_BACKEND`
 is set, on your cloud bucket. Treat `${LOGS_DIR}` and the configured
 bucket as credential-sensitive.
 
-Redaction is not performed by the gate today. Until it is, limit access
-to those locations and, where possible, keep `STORAGE_BACKEND=none` for
-workloads that touch secrets.
+The gate applies best-effort redaction before each audit write: bearer
+tokens, `api_key=` / `password=` style assignments, AWS access key IDs,
+and PEM-encoded private keys are replaced with `[REDACTED]`. Add custom
+patterns via `REDACT_PATTERNS`. Redaction is pattern-based and will not
+catch every secret shape — continue to limit access to log locations.
 
 ### 3. A single `AUTH_TOKEN` guards both paths
 

@@ -93,10 +93,17 @@ async function main(): Promise<void> {
     fetch: app.fetch,
   });
 
+  const policyCount = registry.snapshot().policies.length;
   // eslint-disable-next-line no-console
   console.log(
-    `cc-tool-gate listening on ${cfg.HOST}:${cfg.PORT} (policies=${registry.snapshot().policies.length}, storage=${cfg.STORAGE_BACKEND})`,
+    `cc-tool-gate listening on ${cfg.HOST}:${cfg.PORT} (policies=${policyCount}, storage=${cfg.STORAGE_BACKEND})`,
   );
+  if (policyCount === 0) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `WARNING: 0 policies loaded from POLICY_SOURCES=${cfg.POLICY_SOURCES.join(",")}. The gate will fall back to "allow" for every request that isn't caught by index.yaml hard rules.`,
+    );
+  }
 
   let shuttingDown = false;
   const shutdown = async (signal: string): Promise<void> => {
