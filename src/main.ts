@@ -4,13 +4,14 @@ import { createMemoryCache } from "./adapters/cache";
 import { createLlmJudge } from "./adapters/llm";
 import { createJsonlSink } from "./adapters/jsonl";
 import { createStorageSink } from "./adapters/storage";
-import { createUploadWorker, type UploadWorker } from "./adapters/upload-worker";
+import { createUploadWorker } from "./adapters/upload-worker";
 import {
   createPolicyRegistry,
   createSourceProvider,
 } from "./adapters/sources";
 import { DEFAULT_REDACT_RULES, parseExtraRules } from "./core/redact";
 import { createRateLimiter } from "./core/ratelimit";
+import type { StorageSink } from "./core/types";
 
 async function main(): Promise<void> {
   const cfg = loadConfig();
@@ -36,25 +37,26 @@ async function main(): Promise<void> {
   await registry.reload();
   registry.start();
 
-  const storage = createStorageSink(cfg);
-  let worker: UploadWorker | null = null;
-  let rotateTimer: ReturnType<typeof setInterval> | null = null;
-  if (storage) {
-    worker = createUploadWorker({
-      sink: storage,
-      pendingDir: sink.pendingDir(),
-      uploadedDir: sink.uploadedDir(),
-      deadLetterDir: sink.deadLetterDir(),
-      hostname: cfg.HOSTNAME,
-      intervalMs: cfg.UPLOAD_POLL_MS,
-      maxAttempts: cfg.UPLOAD_MAX_ATTEMPTS,
-    });
-    worker.start();
-    // periodic forced rotation so we don't sit on data forever
-    rotateTimer = setInterval(() => {
-      void sink.rotateNow();
-    }, 60_000);
-  }
+  // Local-only mode has no cloud sink; use a no-op that reports success so
+  // the worker drains pending/ into uploaded/, where its retention sweep
+  // then prunes files older than retainMs like any other backend.
+  const storage: StorageSink = createStorageSink(cfg) ?? {
+    upload: async () => true,
+  };
+  const worker = createUploadWorker({
+    sink: storage,
+    pendingDir: sink.pendingDir(),
+    uploadedDir: sink.uploadedDir(),
+    deadLetterDir: sink.deadLetterDir(),
+    hostname: cfg.HOSTNAME,
+    intervalMs: cfg.UPLOAD_POLL_MS,
+    maxAttempts: cfg.UPLOAD_MAX_ATTEMPTS,
+  });
+  worker.start();
+  // periodic forced rotation so we don't sit on data forever
+  const rotateTimer = setInterval(() => {
+    void sink.rotateNow();
+  }, 60_000);
 
   const extraRules = parseExtraRules(cfg.REDACT_PATTERNS, (raw, err) => {
     // eslint-disable-next-line no-console
@@ -107,7 +109,7 @@ async function main(): Promise<void> {
     server.stop();
     // 2. Stop background pollers so they don't race the final flush.
     registry.stop();
-    if (rotateTimer) clearInterval(rotateTimer);
+    clearInterval(rotateTimer);
 
     // 3. Flush the active JSONL file so it lands in pending/ for upload.
     try {
@@ -118,15 +120,13 @@ async function main(): Promise<void> {
     }
 
     // 4. One last upload sweep, then stop the worker.
-    if (worker) {
-      try {
-        await worker.tick();
-      } catch (err) {
-        // eslint-disable-next-line no-console
-        console.error("upload tick on shutdown failed:", err);
-      }
-      worker.stop();
+    try {
+      await worker.tick();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("upload tick on shutdown failed:", err);
     }
+    worker.stop();
     process.exit(0);
   };
 
