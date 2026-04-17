@@ -1,8 +1,27 @@
 {
   "name": "cc-tool-gate",
+  "version": "0.1.0",
+  "description": "LLM-powered permission gate for Claude Code's PreToolUse hook",
   "module": "src/main.ts",
   "type": "module",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/seosd97/CC-tool-gate.git"
+  },
+  "keywords": [
+    "claude-code",
+    "claude",
+    "anthropic",
+    "permission",
+    "hook",
+    "agent",
+    "bun",
+    "hono"
+  ],
+  "engines": {
+    "bun": ">=1.3.0"
+  },
   "scripts": {
     "start": "bun run src/main.ts",
     "dev": "bun --watch run src/main.ts",
