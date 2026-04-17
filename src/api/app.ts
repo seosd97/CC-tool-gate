@@ -3,6 +3,7 @@ import { bearerAuth } from "hono/bearer-auth";
 import { z } from "zod";
 import { createPipeline } from "../core/pipeline";
 import type { RedactRule } from "../core/redact";
+import type { RateLimiter } from "../core/ratelimit";
 import {
   PreToolUseRequest,
   type DecisionCache,
@@ -20,6 +21,7 @@ export interface AppDeps {
   getSnapshot: () => { policies: Policy[]; index: IndexConfig };
   reload: () => Promise<void>;
   redactRules?: readonly RedactRule[];
+  rateLimiter?: RateLimiter;
 }
 
 export function createApp(deps: AppDeps): Hono {
@@ -30,6 +32,7 @@ export function createApp(deps: AppDeps): Hono {
     sink: deps.sink,
     getSnapshot: deps.getSnapshot,
     redactRules: deps.redactRules,
+    rateLimiter: deps.rateLimiter,
   });
 
   app.get("/health", (c) =>

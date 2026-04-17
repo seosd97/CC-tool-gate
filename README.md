@@ -50,6 +50,7 @@ Optional:
 | Var | Default | Purpose |
 | --- | --- | --- |
 | `PORT` | `8787` | HTTP port. |
+| `HOST` | `127.0.0.1` | Interface to bind. Loopback by default so the gate isn't reachable from the LAN; set to `0.0.0.0` only if you explicitly want it exposed. |
 | `LLM_MODEL` | `claude-haiku-4-5` | Anthropic model. |
 | `LOGS_DIR` | `./logs` | Where to write JSONL audit logs. |
 | `HOSTNAME` | `os.hostname()` | Logical host name (used in the storage key). |
@@ -58,6 +59,9 @@ Optional:
 | `POLICY_POLL_MS` | `60000` | Source poll interval. |
 | `STORAGE_BACKEND` | `none` | One of `none`, `r2`, `s3`. Selects where rotated audit logs are uploaded. |
 | `UPLOAD_POLL_MS` | `30000` | How often the upload worker scans `pending/`. |
+| `UPLOAD_MAX_ATTEMPTS` | `5` | Move a rotated audit file to `logs/dead-letter/` after this many consecutive upload failures (counter is per-process). |
+| `RATE_LIMIT_PER_MIN` | `600` | Max requests per `session_id` per minute. Excess requests short-circuit to `deny` with `source=rate_limit`, skipping the LLM. Set `0` to disable. |
+| `REDACT_PATTERNS` | `` | Additional comma-separated regex patterns merged onto the defaults before audit writes. |
 
 ### Storage backends
 

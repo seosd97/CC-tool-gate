@@ -72,13 +72,17 @@ describe("upload worker", () => {
   let dir: string;
   let pending: string;
   let uploaded: string;
+  let dead: string;
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), "ccgate-uw-"));
     pending = join(dir, "pending");
     uploaded = join(dir, "uploaded");
+    dead = join(dir, "dead-letter");
     await mkdir(pending, { recursive: true });
     await mkdir(uploaded, { recursive: true });
+    // deadLetter is created lazily by the worker — don't pre-create it, so
+    // tests catch any "forgot to mkdir" regressions.
   });
 
   afterEach(async () => {
@@ -94,6 +98,7 @@ describe("upload worker", () => {
       sink,
       pendingDir: pending,
       uploadedDir: uploaded,
+      deadLetterDir: dead,
       hostname: "host1",
       now: () => new Date("2026-04-17T03:00:00Z").getTime(),
     });
@@ -101,6 +106,7 @@ describe("upload worker", () => {
     const result = await worker.tick();
     expect(result.uploaded).toBe(2);
     expect(result.pruned).toBe(0);
+    expect(result.deadLettered).toBe(0);
 
     const remaining = await readdir(pending);
     expect(remaining).toHaveLength(0);
@@ -129,6 +135,7 @@ describe("upload worker", () => {
       sink,
       pendingDir: pending,
       uploadedDir: uploaded,
+      deadLetterDir: dead,
       hostname: "host1",
       now: () => new Date("2026-04-17T05:00:00Z").getTime(),
     });
@@ -148,6 +155,7 @@ describe("upload worker", () => {
       sink,
       pendingDir: pending,
       uploadedDir: uploaded,
+      deadLetterDir: dead,
       hostname: "h",
     });
 
@@ -170,6 +178,7 @@ describe("upload worker", () => {
       sink,
       pendingDir: pending,
       uploadedDir: uploaded,
+      deadLetterDir: dead,
       hostname: "h",
     });
 
@@ -189,6 +198,7 @@ describe("upload worker", () => {
       sink: createFakeSink(),
       pendingDir: pending,
       uploadedDir: uploaded,
+      deadLetterDir: dead,
       hostname: "h",
       retainMs: 7 * 24 * 3600 * 1000,
     });
@@ -211,12 +221,13 @@ describe("upload worker", () => {
       sink: createFakeSink(),
       pendingDir: pending,
       uploadedDir: uploaded,
+      deadLetterDir: dead,
       hostname: "h",
       retainMs: 7 * 24 * 3600 * 1000,
     });
 
     const result = await worker.tick();
-    expect(result).toEqual({ uploaded: 2, pruned: 1 });
+    expect(result).toEqual({ uploaded: 2, pruned: 1, deadLettered: 0 });
   });
 
   test("ignores non-.jsonl.gz files in pending", async () => {
@@ -228,6 +239,7 @@ describe("upload worker", () => {
       sink,
       pendingDir: pending,
       uploadedDir: uploaded,
+      deadLetterDir: dead,
       hostname: "h",
     });
 
@@ -235,5 +247,94 @@ describe("upload worker", () => {
     expect(result.uploaded).toBe(1);
     expect(sink.uploads.map((u) => u.localPath.endsWith("good.jsonl.gz"))).toEqual([true]);
     expect((await readdir(pending)).sort()).toEqual(["ignored.txt"]);
+  });
+
+  test("moves a file to dead-letter/ after maxAttempts consecutive failures", async () => {
+    await writeFile(join(pending, "poison.jsonl.gz"), "x");
+    const sink = createFakeSink({ failAll: true });
+    const dlqEvents: { path: string; attempts: number }[] = [];
+
+    const worker = createUploadWorker({
+      sink,
+      pendingDir: pending,
+      uploadedDir: uploaded,
+      deadLetterDir: dead,
+      hostname: "h",
+      maxAttempts: 3,
+      onDeadLetter: (path, attempts) => dlqEvents.push({ path, attempts }),
+    });
+
+    // Attempts 1 and 2 — file stays in pending.
+    expect((await worker.tick()).deadLettered).toBe(0);
+    expect((await worker.tick()).deadLettered).toBe(0);
+    expect(await readdir(pending)).toEqual(["poison.jsonl.gz"]);
+
+    // Attempt 3 crosses the threshold and moves the file.
+    const third = await worker.tick();
+    expect(third.deadLettered).toBe(1);
+    expect(await readdir(pending)).toEqual([]);
+    expect(await readdir(dead)).toEqual(["poison.jsonl.gz"]);
+    expect(dlqEvents).toHaveLength(1);
+    expect(dlqEvents[0]!.attempts).toBe(3);
+  });
+
+  test("resets attempt counter on a successful upload between failures", async () => {
+    await writeFile(join(pending, "flaky.jsonl.gz"), "x");
+    let fail = true;
+    const sink: StorageSink = {
+      async upload() {
+        return !fail;
+      },
+    };
+
+    const worker = createUploadWorker({
+      sink,
+      pendingDir: pending,
+      uploadedDir: uploaded,
+      deadLetterDir: dead,
+      hostname: "h",
+      maxAttempts: 3,
+    });
+
+    await worker.tick(); // fail 1
+    await worker.tick(); // fail 2
+    fail = false;
+    const ok = await worker.tick();
+    expect(ok.uploaded).toBe(1);
+    expect(ok.deadLettered).toBe(0);
+
+    // Put a new file under the same name (simulating a fresh rotation)
+    // and verify failure counter was cleared — two more failures must not
+    // DLQ (since the counter resets at 0 after the success).
+    await writeFile(join(pending, "flaky.jsonl.gz"), "y");
+    fail = true;
+    expect((await worker.tick()).deadLettered).toBe(0);
+    expect((await worker.tick()).deadLettered).toBe(0);
+    expect(await readdir(dead).catch(() => [])).toEqual([]);
+  });
+
+  test("thrown sink errors also count toward dead-letter", async () => {
+    await writeFile(join(pending, "boom.jsonl.gz"), "x");
+    const sink: StorageSink = {
+      async upload() {
+        throw new Error("500 Internal");
+      },
+    };
+
+    const worker = createUploadWorker({
+      sink,
+      pendingDir: pending,
+      uploadedDir: uploaded,
+      deadLetterDir: dead,
+      hostname: "h",
+      maxAttempts: 2,
+      onDeadLetter: () => {},
+    });
+
+    await worker.tick();
+    const result = await worker.tick();
+    expect(result.deadLettered).toBe(1);
+    expect(await readdir(pending)).toEqual([]);
+    expect(await readdir(dead)).toEqual(["boom.jsonl.gz"]);
   });
 });

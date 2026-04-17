@@ -212,6 +212,45 @@ describe("pipeline", () => {
     expect(rec.reason).not.toContain("sk_live_leaked");
   });
 
+  test("rate-limited requests short-circuit with source=rate_limit", async () => {
+    const rateLimiter = {
+      check: (_key: string) => ({ allowed: false, retryAfterMs: 2_500 }),
+      size: () => 1,
+    };
+    const p = createPipeline({
+      llm: fakeLlm(async () => {
+        throw new Error("LLM must not be called for rate-limited requests");
+      }),
+      cache,
+      sink,
+      getSnapshot: () => ({ policies: [policy()], index: baseIndex }),
+      rateLimiter,
+    });
+    const r = await p.decide(req());
+    expect(r.decision).toBe("deny");
+    expect(r.source).toBe("rate_limit");
+    expect(r.reason).toContain("retry in 3s");
+    expect(sink.records).toHaveLength(1);
+    expect(sink.records[0]!.source).toBe("rate_limit");
+  });
+
+  test("allowed rate-limit requests fall through to normal pipeline", async () => {
+    const rateLimiter = {
+      check: (_key: string) => ({ allowed: true, retryAfterMs: 0 }),
+      size: () => 1,
+    };
+    const p = createPipeline({
+      llm: fakeLlm(async () => ({ decision: "allow", reason: "fine" })),
+      cache,
+      sink,
+      getSnapshot: () => ({ policies: [policy()], index: baseIndex }),
+      rateLimiter,
+    });
+    const r = await p.decide(req());
+    expect(r.decision).toBe("allow");
+    expect(r.source).toBe("llm");
+  });
+
   test("custom redactRules override defaults", async () => {
     const p = createPipeline({
       llm: fakeLlm(async () => ({ decision: "allow", reason: "fine" })),

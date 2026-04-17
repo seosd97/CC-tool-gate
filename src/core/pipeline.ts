@@ -15,6 +15,7 @@ import {
   redactString,
   type RedactRule,
 } from "./redact";
+import type { RateLimiter } from "./ratelimit";
 
 export interface PipelineDeps {
   llm: LlmJudge;
@@ -26,6 +27,8 @@ export interface PipelineDeps {
   now?: () => Date;
   /** Extra rules merged onto DEFAULT_REDACT_RULES before audit write. */
   redactRules?: readonly RedactRule[];
+  /** Optional per-session_id rate limiter. Skipped when absent. */
+  rateLimiter?: RateLimiter;
 }
 
 /** Stable cache key: tool name + sorted JSON of tool_input. */
@@ -92,6 +95,22 @@ export function createPipeline(deps: PipelineDeps) {
     async decide(req: PreToolUseRequest): Promise<DecisionResult> {
       const t0 = performance.now();
       const { policies, index } = deps.getSnapshot();
+
+      // 0. rate limit (before even reading policies — the point is to cap
+      // work during a flood)
+      if (deps.rateLimiter) {
+        const rl = deps.rateLimiter.check(req.session_id);
+        if (!rl.allowed) {
+          const result: DecisionResult = {
+            decision: "deny",
+            reason: `Rate limit exceeded for session; retry in ${Math.ceil(rl.retryAfterMs / 1000)}s`,
+            source: "rate_limit",
+            matched_policies: [],
+          };
+          await audit(deps.sink, req, result, false, t0, now, rules);
+          return result;
+        }
+      }
 
       // 1. hard rules
       const hard = checkHardRules(req, index);

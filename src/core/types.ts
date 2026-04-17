@@ -72,7 +72,7 @@ export type LlmDecision = z.infer<typeof LlmDecision>;
 export interface DecisionResult {
   decision: PermissionDecision;
   reason: string;
-  source: "hard_deny" | "hard_allow" | "cache" | "llm" | "fallback";
+  source: "hard_deny" | "hard_allow" | "cache" | "llm" | "fallback" | "rate_limit";
   matched_policies: string[];
 }
 

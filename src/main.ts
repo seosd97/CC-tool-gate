@@ -10,6 +10,7 @@ import {
   createSourceProvider,
 } from "./adapters/sources";
 import { DEFAULT_REDACT_RULES, parseExtraRules } from "./core/redact";
+import { createRateLimiter } from "./core/ratelimit";
 
 async function main(): Promise<void> {
   const cfg = loadConfig();
@@ -43,8 +44,10 @@ async function main(): Promise<void> {
       sink: storage,
       pendingDir: sink.pendingDir(),
       uploadedDir: sink.uploadedDir(),
+      deadLetterDir: sink.deadLetterDir(),
       hostname: cfg.HOSTNAME,
       intervalMs: cfg.UPLOAD_POLL_MS,
+      maxAttempts: cfg.UPLOAD_MAX_ATTEMPTS,
     });
     worker.start();
     // periodic forced rotation so we don't sit on data forever
@@ -63,6 +66,14 @@ async function main(): Promise<void> {
   });
   const redactRules = [...DEFAULT_REDACT_RULES, ...extraRules];
 
+  const rateLimiter =
+    cfg.RATE_LIMIT_PER_MIN > 0
+      ? createRateLimiter({
+          windowMs: 60_000,
+          maxRequests: cfg.RATE_LIMIT_PER_MIN,
+        })
+      : undefined;
+
   const app = createApp({
     authToken: cfg.AUTH_TOKEN,
     llm,
@@ -71,16 +82,18 @@ async function main(): Promise<void> {
     getSnapshot: () => registry.snapshot(),
     reload: () => registry.reload(),
     redactRules,
+    rateLimiter,
   });
 
   const server = Bun.serve({
     port: cfg.PORT,
+    hostname: cfg.HOST,
     fetch: app.fetch,
   });
 
   // eslint-disable-next-line no-console
   console.log(
-    `cc-tool-gate listening on :${cfg.PORT} (policies=${registry.snapshot().policies.length}, storage=${cfg.STORAGE_BACKEND})`,
+    `cc-tool-gate listening on ${cfg.HOST}:${cfg.PORT} (policies=${registry.snapshot().policies.length}, storage=${cfg.STORAGE_BACKEND})`,
   );
 
   let shuttingDown = false;

@@ -20,6 +20,7 @@ export interface JsonlSinkHandle extends AuditSink {
   currentPath(): string;
   pendingDir(): string;
   uploadedDir(): string;
+  deadLetterDir(): string;
 }
 
 export function createJsonlSink(opts: JsonlSinkOptions): JsonlSinkHandle {
@@ -30,6 +31,7 @@ export function createJsonlSink(opts: JsonlSinkOptions): JsonlSinkHandle {
   const current = join(opts.logsDir, "current.jsonl");
   const pending = join(opts.logsDir, "pending");
   const uploaded = join(opts.logsDir, "uploaded");
+  const deadLetter = join(opts.logsDir, "dead-letter");
 
   // Ensure dirs eagerly (non-blocking await chain via in-flight promise).
   let ensured: Promise<void> | null = null;
@@ -39,6 +41,7 @@ export function createJsonlSink(opts: JsonlSinkOptions): JsonlSinkHandle {
         await mkdir(opts.logsDir, { recursive: true });
         await mkdir(pending, { recursive: true });
         await mkdir(uploaded, { recursive: true });
+        await mkdir(deadLetter, { recursive: true });
       })();
     }
     return ensured;
@@ -119,6 +122,7 @@ export function createJsonlSink(opts: JsonlSinkOptions): JsonlSinkHandle {
     currentPath: () => current,
     pendingDir: () => pending,
     uploadedDir: () => uploaded,
+    deadLetterDir: () => deadLetter,
   };
 }
 
