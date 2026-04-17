@@ -72,6 +72,9 @@ export function createApp(deps: AppDeps): Hono {
 
   protectedRoutes.post("/admin/reload", async (c) => {
     await deps.reload();
+    // Policies may have changed — drop cached decisions so the next request
+    // is evaluated under the new rules instead of returning a stale verdict.
+    deps.cache.clear();
     const snap = deps.getSnapshot();
     return c.json({ ok: true, policies: snap.policies.length });
   });

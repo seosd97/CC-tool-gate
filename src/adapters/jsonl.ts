@@ -92,13 +92,30 @@ export function createJsonlSink(opts: JsonlSinkOptions): JsonlSinkHandle {
     }
   };
 
+  /**
+   * Rotate through the writeChain so we never race `append`'s internal
+   * rotation. Without this, the external 60s timer in main.ts would call
+   * rotate() while append() was also rotating — causing stat/rename to
+   * ENOENT-throw and producing unhandled rejections.
+   */
+  const rotateChained = async (): Promise<string | null> => {
+    let result: string | null = null;
+    writeChain = writeChain
+      .then(async () => {
+        result = await rotate();
+      })
+      .catch(() => {});
+    await writeChain;
+    return result;
+  };
+
   return {
     async write(record: AuditRecord) {
       const line = JSON.stringify(record) + "\n";
       writeChain = writeChain.then(() => append(line)).catch(() => {});
       await writeChain;
     },
-    rotateNow: rotate,
+    rotateNow: rotateChained,
     currentPath: () => current,
     pendingDir: () => pending,
     uploadedDir: () => uploaded,

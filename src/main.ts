@@ -4,7 +4,7 @@ import { createMemoryCache } from "./adapters/cache";
 import { createLlmJudge } from "./adapters/llm";
 import { createJsonlSink } from "./adapters/jsonl";
 import { createStorageSink } from "./adapters/storage";
-import { createUploadWorker } from "./adapters/upload-worker";
+import { createUploadWorker, type UploadWorker } from "./adapters/upload-worker";
 import {
   createPolicyRegistry,
   createSourceProvider,
@@ -26,7 +26,7 @@ async function main(): Promise<void> {
 
   const sink = createJsonlSink({ logsDir: cfg.LOGS_DIR });
 
-  const sources = cfg.POLICY_SOURCES.map(createSourceProvider);
+  const sources = cfg.POLICY_SOURCES.map((uri) => createSourceProvider(uri));
   const registry = createPolicyRegistry({
     sources,
     pollMs: cfg.POLICY_POLL_MS,
@@ -35,8 +35,10 @@ async function main(): Promise<void> {
   registry.start();
 
   const storage = createStorageSink(cfg);
+  let worker: UploadWorker | null = null;
+  let rotateTimer: ReturnType<typeof setInterval> | null = null;
   if (storage) {
-    const worker = createUploadWorker({
+    worker = createUploadWorker({
       sink: storage,
       pendingDir: sink.pendingDir(),
       uploadedDir: sink.uploadedDir(),
@@ -45,7 +47,7 @@ async function main(): Promise<void> {
     });
     worker.start();
     // periodic forced rotation so we don't sit on data forever
-    setInterval(() => {
+    rotateTimer = setInterval(() => {
       void sink.rotateNow();
     }, 60_000);
   }
@@ -59,7 +61,7 @@ async function main(): Promise<void> {
     reload: () => registry.reload(),
   });
 
-  Bun.serve({
+  const server = Bun.serve({
     port: cfg.PORT,
     fetch: app.fetch,
   });
@@ -68,6 +70,43 @@ async function main(): Promise<void> {
   console.log(
     `cc-tool-gate listening on :${cfg.PORT} (policies=${registry.snapshot().policies.length}, storage=${cfg.STORAGE_BACKEND})`,
   );
+
+  let shuttingDown = false;
+  const shutdown = async (signal: string): Promise<void> => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    // eslint-disable-next-line no-console
+    console.log(`received ${signal}, shutting down`);
+
+    // 1. Stop accepting new HTTP requests so no new audit writes are queued.
+    server.stop();
+    // 2. Stop background pollers so they don't race the final flush.
+    registry.stop();
+    if (rotateTimer) clearInterval(rotateTimer);
+
+    // 3. Flush the active JSONL file so it lands in pending/ for upload.
+    try {
+      await sink.rotateNow();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("rotateNow on shutdown failed:", err);
+    }
+
+    // 4. One last upload sweep, then stop the worker.
+    if (worker) {
+      try {
+        await worker.tick();
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("upload tick on shutdown failed:", err);
+      }
+      worker.stop();
+    }
+    process.exit(0);
+  };
+
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("SIGINT", () => void shutdown("SIGINT"));
 }
 
 main().catch((err: unknown) => {

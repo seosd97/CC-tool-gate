@@ -102,6 +102,7 @@ export interface LlmJudge {
 export interface DecisionCache {
   get(key: string): DecisionResult | undefined;
   set(key: string, value: DecisionResult): void;
+  clear(): void;
   size(): number;
 }
 

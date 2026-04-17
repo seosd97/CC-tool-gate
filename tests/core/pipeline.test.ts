@@ -17,6 +17,7 @@ function fakeCache(): DecisionCache & { _store: Map<string, DecisionResult> } {
     _store: store,
     get: (k) => store.get(k),
     set: (k, v) => void store.set(k, v),
+    clear: () => store.clear(),
     size: () => store.size,
   };
 }
