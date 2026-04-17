@@ -12,8 +12,9 @@ pipeline:
 5. On LLM failure, falls back to the matched policy's `default_decision`,
    else `ask`.
 
-Every decision is appended to a local JSONL file. If the optional R2 vars are
-set, rotated `.jsonl.gz` files are uploaded in the background.
+Every decision is appended to a local JSONL file. If a storage backend is
+configured (Cloudflare R2 or AWS S3), rotated `.jsonl.gz` files are uploaded
+in the background.
 
 ## Stack
 
@@ -22,7 +23,7 @@ set, rotated `.jsonl.gz` files are uploaded in the background.
 - zod at every boundary (env, HTTP body, frontmatter, source bytes)
 - `@anthropic-ai/sdk` with prompt caching on the policies block
 - `gray-matter` + `yaml` for policy parsing
-- `aws4fetch` for the R2 PUT (S3-compatible)
+- `aws4fetch` for storage PUTs (R2 / S3 / S3-compatible)
 
 ## Install & run
 
@@ -51,12 +52,76 @@ Optional:
 | `PORT` | `8787` | HTTP port. |
 | `LLM_MODEL` | `claude-haiku-4-5` | Anthropic model. |
 | `LOGS_DIR` | `./logs` | Where to write JSONL audit logs. |
-| `HOSTNAME` | `os.hostname()` | Logical host name (used in R2 key). |
+| `HOSTNAME` | `os.hostname()` | Logical host name (used in the storage key). |
 | `CACHE_TTL_MS` | `300000` | Decision cache TTL. |
 | `CACHE_MAX` | `2000` | Max cached decisions. |
 | `POLICY_POLL_MS` | `60000` | Source poll interval. |
-| `R2_POLL_MS` | `30000` | R2 upload tick. |
-| `R2_ACCOUNT_ID` `R2_ACCESS_KEY_ID` `R2_SECRET_ACCESS_KEY` `R2_BUCKET` | (none) | All four required to enable R2 upload. If any is missing, audit stays local only. |
+| `STORAGE_BACKEND` | `none` | One of `none`, `r2`, `s3`. Selects where rotated audit logs are uploaded. |
+| `UPLOAD_POLL_MS` | `30000` | How often the upload worker scans `pending/`. |
+
+### Storage backends
+
+`cc-tool-gate` always writes audit logs to the local filesystem. To ship those
+logs off-box, set `STORAGE_BACKEND` to one of:
+
+- `none` (default) — local JSONL only, no upload worker.
+- `r2` — Cloudflare R2.
+- `s3` — AWS S3 or any S3-compatible service.
+
+Backends are pluggable; adding GCS or Azure Blob is intentionally not blocked
+by this design — implement `StorageSink` (in `src/core/types.ts`) and add a
+case to `createStorageSink` (in `src/adapters/storage.ts`).
+
+#### Cloudflare R2 — `STORAGE_BACKEND=r2`
+
+| Var | Required | Notes |
+| --- | --- | --- |
+| `R2_ENDPOINT` | yes | Full URL, e.g. `https://<account>.r2.cloudflarestorage.com`. |
+| `R2_BUCKET` | yes | Bucket name. |
+| `R2_ACCESS_KEY_ID` | yes | R2 API token access key. |
+| `R2_SECRET_ACCESS_KEY` | yes | R2 API token secret. |
+
+Example:
+
+```bash
+STORAGE_BACKEND=r2
+R2_ENDPOINT=https://abc123.r2.cloudflarestorage.com
+R2_BUCKET=cc-tool-gate-audit-prod
+R2_ACCESS_KEY_ID=...
+R2_SECRET_ACCESS_KEY=...
+```
+
+#### AWS S3 (and S3-compatible) — `STORAGE_BACKEND=s3`
+
+| Var | Required | Notes |
+| --- | --- | --- |
+| `S3_REGION` | yes | e.g. `us-east-1`. |
+| `S3_BUCKET` | yes | Bucket name. |
+| `S3_ACCESS_KEY_ID` | yes | |
+| `S3_SECRET_ACCESS_KEY` | yes | |
+| `S3_SESSION_TOKEN` | no | For AWS STS temporary credentials. |
+| `S3_ENDPOINT` | no | Set for non-AWS S3 (LocalStack, MinIO). When set, the URL switches to path-style. |
+
+Example (AWS):
+
+```bash
+STORAGE_BACKEND=s3
+S3_REGION=us-east-1
+S3_BUCKET=cc-tool-gate-audit-prod
+S3_ACCESS_KEY_ID=AKIA...
+S3_SECRET_ACCESS_KEY=...
+```
+
+Example (LocalStack):
+
+```bash
+STORAGE_BACKEND=s3
+S3_REGION=us-east-1
+S3_BUCKET=cc-tool-gate-audit
+S3_ACCESS_KEY_ID=test
+S3_SECRET_ACCESS_KEY=test
+S3_ENDPOINT=http://localhost:4566
+```
 
 ## Policy sources
 
@@ -181,10 +246,13 @@ Set `CC_TOOL_GATE_TOKEN` in your shell to the same value as the server's
 - Live writes go to `${LOGS_DIR}/current.jsonl` (one JSON object per line).
 - Rotation: `60s` OR `5MB`, whichever comes first. The rotated file is
   gzipped and moved to `${LOGS_DIR}/pending/`.
-- If R2 is enabled, the background worker uploads `pending/*.jsonl.gz`,
+- If a storage backend is configured (`STORAGE_BACKEND` is `r2` or `s3`),
+  the background worker uploads `pending/*.jsonl.gz` via that backend,
   moves them to `uploaded/`, and deletes uploaded files older than 7 days.
-- R2 key layout:
+- Storage key layout (same for every backend):
   `decisions/dt=YYYY-MM-DD/host=${HOSTNAME}/<unix>-<rand4>.jsonl.gz`.
+  For example, on R2 the full URL is
+  `https://<account>.r2.cloudflarestorage.com/<bucket>/decisions/dt=YYYY-MM-DD/host=<HOSTNAME>/<unix>-<rand4>.jsonl.gz`.
 
 ## Repository layout
 
@@ -200,7 +268,10 @@ src/
     cache.ts          LRU + TTL
     llm.ts            Anthropic SDK with prompt caching
     jsonl.ts          local append + rotate + gzip
-    r2.ts             aws4fetch upload worker
+    r2.ts             Cloudflare R2 StorageSink (aws4fetch)
+    s3.ts             AWS S3 / S3-compatible StorageSink (aws4fetch)
+    storage.ts        StorageSink factory (selects by STORAGE_BACKEND)
+    upload-worker.ts  backend-agnostic pending/ -> sink -> uploaded/ pruner
     sources.ts        file:// / https:// / inline:
   api/
     app.ts            Hono app factory

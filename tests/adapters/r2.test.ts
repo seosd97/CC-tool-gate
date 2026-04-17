@@ -1,108 +1,78 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readdir, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createR2Worker, r2Key } from "../../src/adapters/r2";
+import { createR2Sink, r2Url } from "../../src/adapters/r2";
 
-describe("r2Key", () => {
-  test("uses UTC date and basename", () => {
-    const key = r2Key("host1", "/x/y/12345-abcd.jsonl.gz", new Date("2026-04-17T03:00:00Z"));
-    expect(key).toBe("decisions/dt=2026-04-17/host=host1/12345-abcd.jsonl.gz");
+describe("r2Url", () => {
+  test("path-style URL with explicit endpoint", () => {
+    const url = r2Url(
+      { endpoint: "https://acct.r2.cloudflarestorage.com", bucket: "bk" },
+      "decisions/dt=2026-04-17/host=h/1.jsonl.gz",
+    );
+    expect(url).toBe(
+      "https://acct.r2.cloudflarestorage.com/bk/decisions/dt=2026-04-17/host=h/1.jsonl.gz",
+    );
+  });
+
+  test("strips trailing slash from endpoint", () => {
+    const url = r2Url(
+      { endpoint: "https://acct.r2.cloudflarestorage.com/", bucket: "bk" },
+      "k",
+    );
+    expect(url).toBe("https://acct.r2.cloudflarestorage.com/bk/k");
   });
 });
 
-describe("R2 worker", () => {
+describe("createR2Sink", () => {
   let dir: string;
-  let pending: string;
-  let uploaded: string;
+  let file: string;
 
   beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), "ccgate-r2-"));
-    pending = join(dir, "pending");
-    uploaded = join(dir, "uploaded");
-    await mkdir(pending, { recursive: true });
-    await mkdir(uploaded, { recursive: true });
+    dir = await mkdtemp(join(tmpdir(), "ccgate-r2-sink-"));
+    file = join(dir, "1.jsonl.gz");
+    await writeFile(file, "fake-gz-bytes");
   });
 
   afterEach(async () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  test("uploads pending files and moves them to uploaded/", async () => {
-    await writeFile(join(pending, "1.jsonl.gz"), "fake-gz-bytes");
-    await writeFile(join(pending, "2.jsonl.gz"), "more");
-    const calls: string[] = [];
-    const fakeFetch =async (input: any) => {
-      calls.push(typeof input === "string" ? input : input.url);
+  test("signs and PUTs to the path-style R2 URL on success", async () => {
+    const calls: { url: string; method: string }[] = [];
+    const fakeFetch = async (input: Request | string | URL): Promise<Response> => {
+      const req = input as Request;
+      calls.push({ url: req.url, method: req.method });
       return new Response("", { status: 200 });
     };
 
-    const worker = createR2Worker({
-      pendingDir: pending,
-      uploadedDir: uploaded,
-      config: {
-        accountId: "acct",
-        accessKeyId: "id",
-        secretAccessKey: "secret",
-        bucket: "bk",
-        hostname: "host1",
-        fetchImpl: fakeFetch,
-      },
+    const sink = createR2Sink({
+      endpoint: "https://acct.r2.cloudflarestorage.com",
+      bucket: "bk",
+      accessKeyId: "id",
+      secretAccessKey: "secret",
+      fetchImpl: fakeFetch,
     });
 
-    const result = await worker.tick();
-    expect(result.uploaded).toBe(2);
-    const remaining = await readdir(pending);
-    expect(remaining).toHaveLength(0);
-    const moved = await readdir(uploaded);
-    expect(moved.sort()).toEqual(["1.jsonl.gz", "2.jsonl.gz"]);
-    expect(calls.every((u) => u.startsWith("https://acct.r2.cloudflarestorage.com/bk/"))).toBe(true);
+    const ok = await sink.upload(file, "decisions/dt=2026-04-17/host=h/1.jsonl.gz", "application/gzip");
+    expect(ok).toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.method).toBe("PUT");
+    expect(calls[0]!.url).toBe(
+      "https://acct.r2.cloudflarestorage.com/bk/decisions/dt=2026-04-17/host=h/1.jsonl.gz",
+    );
   });
 
-  test("leaves files in pending on non-2xx response", async () => {
-    await writeFile(join(pending, "1.jsonl.gz"), "x");
-    const fakeFetch =async () => new Response("nope", { status: 500 });
-    const worker = createR2Worker({
-      pendingDir: pending,
-      uploadedDir: uploaded,
-      config: {
-        accountId: "a",
-        accessKeyId: "i",
-        secretAccessKey: "s",
-        bucket: "b",
-        hostname: "h",
-        fetchImpl: fakeFetch,
-      },
+  test("returns false on non-2xx response", async () => {
+    const fakeFetch = async (): Promise<Response> => new Response("nope", { status: 500 });
+    const sink = createR2Sink({
+      endpoint: "https://acct.r2.cloudflarestorage.com",
+      bucket: "bk",
+      accessKeyId: "id",
+      secretAccessKey: "secret",
+      fetchImpl: fakeFetch,
     });
-    const result = await worker.tick();
-    expect(result.uploaded).toBe(0);
-    const remaining = await readdir(pending);
-    expect(remaining).toEqual(["1.jsonl.gz"]);
-  });
-
-  test("prunes uploaded files older than retainMs", async () => {
-    const oldFile = join(uploaded, "old.jsonl.gz");
-    await writeFile(oldFile, "old");
-    const ancient = new Date(Date.now() - 30 * 24 * 3600 * 1000);
-    await utimes(oldFile, ancient, ancient);
-    await writeFile(join(uploaded, "fresh.jsonl.gz"), "new");
-
-    const worker = createR2Worker({
-      pendingDir: pending,
-      uploadedDir: uploaded,
-      config: {
-        accountId: "a",
-        accessKeyId: "i",
-        secretAccessKey: "s",
-        bucket: "b",
-        hostname: "h",
-        fetchImpl: async () => new Response("", { status: 200 }),
-      },
-      retainMs: 7 * 24 * 3600 * 1000,
-    });
-    const result = await worker.tick();
-    expect(result.pruned).toBe(1);
-    const left = (await readdir(uploaded)).sort();
-    expect(left).toEqual(["fresh.jsonl.gz"]);
+    const ok = await sink.upload(file, "k", "application/gzip");
+    expect(ok).toBe(false);
   });
 });

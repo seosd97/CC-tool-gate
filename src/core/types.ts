@@ -114,3 +114,12 @@ export interface SourceProvider {
   load(): Promise<{ policies: Policy[]; index?: IndexConfig }>;
   uri: string;
 }
+
+export interface StorageSink {
+  /**
+   * Upload one local file to the backend at the given key. Returns true on
+   * success (any 2xx), false on a recoverable failure (caller leaves the file
+   * in pending/ for the next pass). May throw on truly unexpected errors.
+   */
+  upload(localPath: string, key: string, contentType: string): Promise<boolean>;
+}

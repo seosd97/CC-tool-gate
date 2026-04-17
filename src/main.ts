@@ -3,7 +3,8 @@ import { createApp } from "./api/app";
 import { createMemoryCache } from "./adapters/cache";
 import { createLlmJudge } from "./adapters/llm";
 import { createJsonlSink } from "./adapters/jsonl";
-import { createR2Worker } from "./adapters/r2";
+import { createStorageSink } from "./adapters/storage";
+import { createUploadWorker } from "./adapters/upload-worker";
 import {
   createPolicyRegistry,
   createSourceProvider,
@@ -33,18 +34,14 @@ async function main(): Promise<void> {
   await registry.reload();
   registry.start();
 
-  if (cfg.r2Enabled) {
-    const worker = createR2Worker({
+  const storage = createStorageSink(cfg);
+  if (storage) {
+    const worker = createUploadWorker({
+      sink: storage,
       pendingDir: sink.pendingDir(),
       uploadedDir: sink.uploadedDir(),
-      intervalMs: cfg.R2_POLL_MS,
-      config: {
-        accountId: cfg.R2_ACCOUNT_ID,
-        accessKeyId: cfg.R2_ACCESS_KEY_ID,
-        secretAccessKey: cfg.R2_SECRET_ACCESS_KEY,
-        bucket: cfg.R2_BUCKET,
-        hostname: cfg.HOSTNAME,
-      },
+      hostname: cfg.HOSTNAME,
+      intervalMs: cfg.UPLOAD_POLL_MS,
     });
     worker.start();
     // periodic forced rotation so we don't sit on data forever
@@ -69,7 +66,7 @@ async function main(): Promise<void> {
 
   // eslint-disable-next-line no-console
   console.log(
-    `cc-tool-gate listening on :${cfg.PORT} (policies=${registry.snapshot().policies.length}, r2=${cfg.r2Enabled ? "on" : "off"})`,
+    `cc-tool-gate listening on :${cfg.PORT} (policies=${registry.snapshot().policies.length}, storage=${cfg.STORAGE_BACKEND})`,
   );
 }
 
