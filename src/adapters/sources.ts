@@ -10,22 +10,13 @@ import {
 
 const INDEX_FILES = new Set(["index.yaml", "index.yml"]);
 
-/** Default per-fetch timeout for the HTTP source. */
-const DEFAULT_HTTP_TIMEOUT_MS = 10_000;
-
-export interface SourceProviderOptions {
-  /** Per-fetch timeout for http(s) sources. Defaults to 10s. */
-  timeoutMs?: number;
-}
+const HTTP_TIMEOUT_MS = 10_000;
 
 /** Dispatch a URI like file:// / https:// / inline: to the right loader. */
-export function createSourceProvider(
-  uri: string,
-  opts: SourceProviderOptions = {},
-): SourceProvider {
+export function createSourceProvider(uri: string): SourceProvider {
   if (uri.startsWith("file://")) return fileSource(uri);
   if (uri.startsWith("http://") || uri.startsWith("https://")) {
-    return httpSource(uri, opts.timeoutMs ?? DEFAULT_HTTP_TIMEOUT_MS);
+    return httpSource(uri, HTTP_TIMEOUT_MS);
   }
   if (uri.startsWith("inline:")) return inlineSource(uri);
   throw new Error(`Unsupported POLICY_SOURCES scheme: ${uri}`);
@@ -162,7 +153,6 @@ export interface PolicyRegistry {
 export interface RegistryOptions {
   sources: SourceProvider[];
   pollMs?: number;
-  fallbackIndex?: IndexConfig;
 }
 
 const EMPTY_INDEX: IndexConfig = {
@@ -173,7 +163,7 @@ const EMPTY_INDEX: IndexConfig = {
 export function createPolicyRegistry(opts: RegistryOptions): PolicyRegistry {
   const interval = opts.pollMs ?? 60_000;
   let policies: Policy[] = [];
-  let index: IndexConfig = opts.fallbackIndex ?? EMPTY_INDEX;
+  let index: IndexConfig = EMPTY_INDEX;
   let timer: ReturnType<typeof setInterval> | null = null;
 
   const reload = async (): Promise<void> => {

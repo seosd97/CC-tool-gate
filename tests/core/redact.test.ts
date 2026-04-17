@@ -1,10 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  DEFAULT_REDACT_RULES,
-  parseExtraRules,
-  redact,
-  redactString,
-} from "../../src/core/redact";
+import { parseExtraRules, redact, redactString } from "../../src/core/redact";
 
 describe("redactString default rules", () => {
   test("scrubs Authorization Bearer header", () => {
@@ -105,16 +100,5 @@ describe("parseExtraRules", () => {
   test("empty spec yields no rules", () => {
     expect(parseExtraRules("")).toEqual([]);
     expect(parseExtraRules("  ,  ,")).toEqual([]);
-  });
-});
-
-describe("DEFAULT_REDACT_RULES exported shape", () => {
-  test("is a non-empty readonly array of RedactRule", () => {
-    expect(Array.isArray(DEFAULT_REDACT_RULES)).toBe(true);
-    expect(DEFAULT_REDACT_RULES.length).toBeGreaterThan(0);
-    for (const r of DEFAULT_REDACT_RULES) {
-      expect(r.pattern).toBeInstanceOf(RegExp);
-      expect(typeof r.replacement).toBe("string");
-    }
   });
 });

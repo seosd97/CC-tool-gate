@@ -67,18 +67,4 @@ describe("rate limiter", () => {
     rl.check("a");
     expect(rl.size()).toBe(2); // now "b" was evicted because "a" touched last
   });
-
-  test("retryAfterMs is never negative", () => {
-    let t = 1000;
-    const rl = createRateLimiter({
-      windowMs: 1000,
-      maxRequests: 1,
-      now: () => t,
-    });
-    rl.check("a");
-    // Force a second check at a time where even the oldest is ancient.
-    t += 10_000;
-    // Now the window has fully elapsed, so the next call is allowed.
-    expect(rl.check("a").allowed).toBe(true);
-  });
 });

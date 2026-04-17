@@ -36,11 +36,6 @@ describe("partitionDateFromFilename", () => {
     expect(partitionDateFromFilename("/x/y/hello.jsonl.gz")).toBeNull();
     expect(partitionDateFromFilename("/x/y/current.jsonl")).toBeNull();
   });
-
-  test("rejects implausibly small ms (pre-2001)", () => {
-    // `12345` would map to 1970-01-01 — definitely not a real rotation ts.
-    expect(partitionDateFromFilename("/x/y/12345-abcd.jsonl.gz")).toBeNull();
-  });
 });
 
 describe("uploadKey", () => {

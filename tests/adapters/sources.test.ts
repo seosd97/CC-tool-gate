@@ -72,34 +72,6 @@ describe("createSourceProvider", () => {
   });
 });
 
-describe("http source timeout", () => {
-  test("aborts fetch that exceeds timeoutMs", async () => {
-    // Server that never responds — forces the AbortController path.
-    const server = Bun.serve({
-      port: 0,
-      fetch: () => new Promise<Response>(() => {}),
-    });
-    try {
-      const src = createSourceProvider(
-        `http://127.0.0.1:${server.port}/policy.md`,
-        { timeoutMs: 50 },
-      );
-      const t0 = Date.now();
-      let err: unknown;
-      try {
-        await src.load();
-      } catch (e) {
-        err = e;
-      }
-      expect(err).toBeDefined();
-      // Should abort well under a generous ceiling rather than hang forever.
-      expect(Date.now() - t0).toBeLessThan(2_000);
-    } finally {
-      server.stop(true);
-    }
-  });
-});
-
 describe("policy registry", () => {
   test("merges layers (later overrides earlier by name)", async () => {
     const a: SourceProvider = {

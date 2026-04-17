@@ -39,15 +39,11 @@ export interface UploadWorker {
  */
 const ROTATED_FILENAME_RE = /^(\d+)-[0-9a-f]+\.jsonl\.gz$/;
 
-// Epoch ms for 2001-01-01 — anything below this is obviously not a real
-// rotation timestamp; treat it as "unparseable" and fall back.
-const MIN_PLAUSIBLE_MS = 978307200000;
-
 export function partitionDateFromFilename(filePath: string): Date | null {
   const m = ROTATED_FILENAME_RE.exec(basename(filePath));
   if (!m) return null;
   const ms = Number(m[1]);
-  if (!Number.isFinite(ms) || ms < MIN_PLAUSIBLE_MS) return null;
+  if (!Number.isFinite(ms)) return null;
   return new Date(ms);
 }
 

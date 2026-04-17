@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import { bearerAuth } from "hono/bearer-auth";
-import { z } from "zod";
 import { createPipeline } from "../core/pipeline";
 import type { RedactRule } from "../core/redact";
 import type { RateLimiter } from "../core/ratelimit";
@@ -88,7 +87,3 @@ export function createApp(deps: AppDeps): Hono {
   app.route("/", protectedRoutes);
   return app;
 }
-
-// Re-export the schema in case other modules want it for testing.
-export { PreToolUseRequest };
-export type { z };

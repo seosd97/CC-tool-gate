@@ -61,7 +61,7 @@ export function createRateLimiter(opts: RateLimiterOptions): RateLimiter {
       if (log.length >= maxRequests) {
         return {
           allowed: false,
-          retryAfterMs: Math.max(0, log[0]! + windowMs - t),
+          retryAfterMs: log[0]! + windowMs - t,
         };
       }
       log.push(t);

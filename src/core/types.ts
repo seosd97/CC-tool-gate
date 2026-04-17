@@ -13,15 +13,6 @@ export const PreToolUseRequest = z.object({
 });
 export type PreToolUseRequest = z.infer<typeof PreToolUseRequest>;
 
-export const PreToolUseResponse = z.object({
-  hookSpecificOutput: z.object({
-    hookEventName: z.literal("PreToolUse"),
-    permissionDecision: PermissionDecision,
-    permissionDecisionReason: z.string(),
-  }),
-});
-export type PreToolUseResponse = z.infer<typeof PreToolUseResponse>;
-
 export const PolicyFrontmatter = z.object({
   name: z.string().min(1),
   description: z.string().default(""),

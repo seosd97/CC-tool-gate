@@ -30,10 +30,5 @@ export function createStorageSink(cfg: AppConfig): StorageSink | null {
       });
     case "none":
       return null;
-    default: {
-      // Exhaustiveness — should be unreachable given the zod enum.
-      const exhaustive: never = cfg.STORAGE_BACKEND;
-      throw new Error(`Unknown STORAGE_BACKEND: ${exhaustive as string}`);
-    }
   }
 }

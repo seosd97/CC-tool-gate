@@ -2,7 +2,6 @@ import { hostname } from "node:os";
 import { z } from "zod";
 
 const StorageBackend = z.enum(["r2", "s3", "none"]);
-export type StorageBackend = z.infer<typeof StorageBackend>;
 
 const Schema = z.object({
   PORT: z.coerce.number().int().positive().default(8787),

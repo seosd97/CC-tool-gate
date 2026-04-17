@@ -11,10 +11,9 @@ import type {
   PreToolUseRequest,
 } from "../../src/core/types";
 
-function fakeCache(): DecisionCache & { _store: Map<string, DecisionResult> } {
+function fakeCache(): DecisionCache {
   const store = new Map<string, DecisionResult>();
   return {
-    _store: store,
     get: (k) => store.get(k),
     set: (k, v) => void store.set(k, v),
     clear: () => store.clear(),

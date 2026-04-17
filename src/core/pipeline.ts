@@ -55,13 +55,10 @@ function checkHardRules(
 ): DecisionResult | null {
   const haystack = toolInputHaystack(req.tool_input);
 
-  const dToolHit =
-    index.hard_deny.tool_names.length > 0 &&
-    index.hard_deny.tool_names.includes(req.tool_name);
-  const dPatHit =
-    index.hard_deny.patterns.length > 0 &&
-    anyPatternMatches(index.hard_deny.patterns, haystack);
-  if (dToolHit || dPatHit) {
+  if (
+    index.hard_deny.tool_names.includes(req.tool_name) ||
+    anyPatternMatches(index.hard_deny.patterns, haystack)
+  ) {
     return {
       decision: "deny",
       reason: "Matched hard_deny rule in index.yaml",
@@ -70,13 +67,10 @@ function checkHardRules(
     };
   }
 
-  const aToolHit =
-    index.hard_allow.tool_names.length > 0 &&
-    index.hard_allow.tool_names.includes(req.tool_name);
-  const aPatHit =
-    index.hard_allow.patterns.length > 0 &&
-    anyPatternMatches(index.hard_allow.patterns, haystack);
-  if (aToolHit || aPatHit) {
+  if (
+    index.hard_allow.tool_names.includes(req.tool_name) ||
+    anyPatternMatches(index.hard_allow.patterns, haystack)
+  ) {
     return {
       decision: "allow",
       reason: "Matched hard_allow rule in index.yaml",
@@ -155,9 +149,10 @@ export function createPipeline(deps: PipelineDeps) {
         deps.cache.set(key, result);
       } catch (err) {
         const fallback = matched[0]?.default_decision ?? "ask";
+        const msg = err instanceof Error ? err.message : String(err);
         result = {
           decision: fallback,
-          reason: `LLM call failed (${stringifyError(err)}); using policy default_decision`,
+          reason: `LLM call failed (${msg}); using policy default_decision`,
           source: "fallback",
           matched_policies: matched.map((p) => p.name),
         };
@@ -167,11 +162,6 @@ export function createPipeline(deps: PipelineDeps) {
       return result;
     },
   };
-}
-
-function stringifyError(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return String(err);
 }
 
 async function audit(

@@ -16,8 +16,6 @@ export interface JsonlSinkOptions {
 export interface JsonlSinkHandle extends AuditSink {
   /** Force rotation if there is anything to rotate. Returns the gz file path or null. */
   rotateNow(): Promise<string | null>;
-  /** Returns the current open file path. */
-  currentPath(): string;
   pendingDir(): string;
   uploadedDir(): string;
   deadLetterDir(): string;
@@ -119,7 +117,6 @@ export function createJsonlSink(opts: JsonlSinkOptions): JsonlSinkHandle {
       await writeChain;
     },
     rotateNow: rotateChained,
-    currentPath: () => current,
     pendingDir: () => pending,
     uploadedDir: () => uploaded,
     deadLetterDir: () => deadLetter,
