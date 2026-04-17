@@ -186,4 +186,42 @@ describe("pipeline", () => {
     expect(rec.latency_ms).toBeGreaterThanOrEqual(0);
     expect(rec.matched_policies).toEqual(["default"]);
   });
+
+  test("audit records redact secrets in tool_input and reason", async () => {
+    const p = createPipeline({
+      llm: fakeLlm(async () => ({
+        decision: "deny",
+        reason: "refused call to Authorization: Bearer sk_live_leaked",
+      })),
+      cache,
+      sink,
+      getSnapshot: () => ({ policies: [policy()], index: baseIndex }),
+    });
+    await p.decide(
+      req({
+        tool_input: {
+          command: "curl -H 'Authorization: Bearer tok.secret.xyz' https://x",
+        },
+      }),
+    );
+    const rec = sink.records[0]!;
+    const cmd = (rec.tool_input as { command: string }).command;
+    expect(cmd).toContain("Authorization: Bearer [REDACTED]");
+    expect(cmd).not.toContain("tok.secret.xyz");
+    expect(rec.reason).toContain("Authorization: Bearer [REDACTED]");
+    expect(rec.reason).not.toContain("sk_live_leaked");
+  });
+
+  test("custom redactRules override defaults", async () => {
+    const p = createPipeline({
+      llm: fakeLlm(async () => ({ decision: "allow", reason: "fine" })),
+      cache,
+      sink,
+      getSnapshot: () => ({ policies: [policy()], index: baseIndex }),
+      redactRules: [{ pattern: /echo/g, replacement: "[ECHO]" }],
+    });
+    await p.decide(req({ tool_input: { command: "echo hi" } }));
+    const rec = sink.records[0]!;
+    expect((rec.tool_input as { command: string }).command).toBe("[ECHO] hi");
+  });
 });

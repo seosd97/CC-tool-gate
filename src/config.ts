@@ -35,6 +35,10 @@ const Schema = z.object({
   CACHE_MAX: z.coerce.number().int().positive().default(2_000),
   POLICY_POLL_MS: z.coerce.number().int().positive().default(60_000),
   UPLOAD_POLL_MS: z.coerce.number().int().positive().default(30_000),
+
+  /** Additional regex patterns (comma-separated) merged onto the default
+   * redaction rules before audit records are written. */
+  REDACT_PATTERNS: z.string().default(""),
 });
 
 export type AppConfig = ReturnType<typeof loadConfig>;

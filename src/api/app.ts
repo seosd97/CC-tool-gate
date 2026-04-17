@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { bearerAuth } from "hono/bearer-auth";
 import { z } from "zod";
 import { createPipeline } from "../core/pipeline";
+import type { RedactRule } from "../core/redact";
 import {
   PreToolUseRequest,
   type DecisionCache,
@@ -18,6 +19,7 @@ export interface AppDeps {
   sink: AuditSink;
   getSnapshot: () => { policies: Policy[]; index: IndexConfig };
   reload: () => Promise<void>;
+  redactRules?: readonly RedactRule[];
 }
 
 export function createApp(deps: AppDeps): Hono {
@@ -27,6 +29,7 @@ export function createApp(deps: AppDeps): Hono {
     cache: deps.cache,
     sink: deps.sink,
     getSnapshot: deps.getSnapshot,
+    redactRules: deps.redactRules,
   });
 
   app.get("/health", (c) =>

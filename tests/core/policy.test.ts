@@ -64,6 +64,17 @@ describe("anyPatternMatches", () => {
   test("returns false when nothing matches", () => {
     expect(anyPatternMatches(["foo", "bar"], "baz")).toBe(false);
   });
+  test("repeated calls with the same array reuse compiled regexes", () => {
+    // Hitting the precompile cache: mixed valid + invalid patterns called
+    // many times against varying haystacks must stay correct.
+    const patterns = ["\\.env", "[unclosed", "^echo "];
+    for (let i = 0; i < 100; i++) {
+      expect(anyPatternMatches(patterns, "cat /etc/.env")).toBe(true);
+      expect(anyPatternMatches(patterns, "x [unclosed y")).toBe(true);
+      expect(anyPatternMatches(patterns, "echo hi")).toBe(true);
+      expect(anyPatternMatches(patterns, "nope")).toBe(false);
+    }
+  });
 });
 
 describe("matchPolicies", () => {

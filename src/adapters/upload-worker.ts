@@ -22,11 +22,33 @@ export interface UploadWorker {
   tick(): Promise<{ uploaded: number; pruned: number }>;
 }
 
+/**
+ * Rotated audit files are named `${ms}-${hex4}.jsonl.gz` (see jsonl.ts).
+ * If we can parse the ms prefix we use that date, so files that sat in
+ * pending/ across a day boundary (e.g. because R2 was down) still land in
+ * the partition matching when the data was generated, not when we finally
+ * uploaded it.
+ */
+const ROTATED_FILENAME_RE = /^(\d+)-[0-9a-f]+\.jsonl\.gz$/;
+
+// Epoch ms for 2001-01-01 — anything below this is obviously not a real
+// rotation timestamp; treat it as "unparseable" and fall back.
+const MIN_PLAUSIBLE_MS = 978307200000;
+
+export function partitionDateFromFilename(filePath: string): Date | null {
+  const m = ROTATED_FILENAME_RE.exec(basename(filePath));
+  if (!m) return null;
+  const ms = Number(m[1]);
+  if (!Number.isFinite(ms) || ms < MIN_PLAUSIBLE_MS) return null;
+  return new Date(ms);
+}
+
 /** Build the storage key for a rotated audit log file. Exposed for tests. */
-export function uploadKey(hostname: string, filePath: string, now: Date): string {
-  const yyyy = now.getUTCFullYear();
-  const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(now.getUTCDate()).padStart(2, "0");
+export function uploadKey(hostname: string, filePath: string, fallback: Date): string {
+  const d = partitionDateFromFilename(filePath) ?? fallback;
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
   return `decisions/dt=${yyyy}-${mm}-${dd}/host=${hostname}/${basename(filePath)}`;
 }
 

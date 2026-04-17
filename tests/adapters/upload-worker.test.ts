@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   createUploadWorker,
+  partitionDateFromFilename,
   uploadKey,
 } from "../../src/adapters/upload-worker";
 import type { StorageSink } from "../../src/core/types";
@@ -23,10 +24,47 @@ function createFakeSink(opts: { failAll?: boolean } = {}): FakeSink {
   };
 }
 
+describe("partitionDateFromFilename", () => {
+  test("parses ms prefix from rotated filename", () => {
+    const d = partitionDateFromFilename(
+      "/x/y/1776412800000-abcd.jsonl.gz",
+    );
+    expect(d?.toISOString()).toBe("2026-04-17T08:00:00.000Z");
+  });
+
+  test("returns null for non-rotated filenames", () => {
+    expect(partitionDateFromFilename("/x/y/hello.jsonl.gz")).toBeNull();
+    expect(partitionDateFromFilename("/x/y/current.jsonl")).toBeNull();
+  });
+
+  test("rejects implausibly small ms (pre-2001)", () => {
+    // `12345` would map to 1970-01-01 — definitely not a real rotation ts.
+    expect(partitionDateFromFilename("/x/y/12345-abcd.jsonl.gz")).toBeNull();
+  });
+});
+
 describe("uploadKey", () => {
-  test("uses UTC date and basename", () => {
-    const key = uploadKey("host1", "/x/y/12345-abcd.jsonl.gz", new Date("2026-04-17T03:00:00Z"));
-    expect(key).toBe("decisions/dt=2026-04-17/host=host1/12345-abcd.jsonl.gz");
+  test("derives date from filename ms prefix, not current time", () => {
+    const key = uploadKey(
+      "host1",
+      "/x/y/1776412800000-abcd.jsonl.gz",
+      new Date("2099-01-01T00:00:00Z"),
+    );
+    // Date must come from the filename (2026-04-17), not the fallback.
+    expect(key).toBe(
+      "decisions/dt=2026-04-17/host=host1/1776412800000-abcd.jsonl.gz",
+    );
+  });
+
+  test("falls back to supplied date when filename is unparseable", () => {
+    const key = uploadKey(
+      "host1",
+      "/x/y/hand-dropped.jsonl.gz",
+      new Date("2026-04-17T03:00:00Z"),
+    );
+    expect(key).toBe(
+      "decisions/dt=2026-04-17/host=host1/hand-dropped.jsonl.gz",
+    );
   });
 });
 
@@ -75,6 +113,31 @@ describe("upload worker", () => {
       "decisions/dt=2026-04-17/host=host1/1.jsonl.gz",
       "decisions/dt=2026-04-17/host=host1/2.jsonl.gz",
     ]);
+  });
+
+  test("partitions by filename date even when upload runs on a later day", async () => {
+    // The file was rotated on 2026-04-15 but sat in pending/ (e.g. R2 was
+    // down) and only uploads now, two days later. It should still land in
+    // the dt=2026-04-15 partition to match when the data was actually
+    // generated.
+    const rotatedMs = new Date("2026-04-15T23:59:00Z").getTime();
+    const filename = `${rotatedMs}-beef.jsonl.gz`;
+    await writeFile(join(pending, filename), "fake-gz-bytes");
+    const sink = createFakeSink();
+
+    const worker = createUploadWorker({
+      sink,
+      pendingDir: pending,
+      uploadedDir: uploaded,
+      hostname: "host1",
+      now: () => new Date("2026-04-17T05:00:00Z").getTime(),
+    });
+
+    const result = await worker.tick();
+    expect(result.uploaded).toBe(1);
+    expect(sink.uploads[0]!.key).toBe(
+      `decisions/dt=2026-04-15/host=host1/${filename}`,
+    );
   });
 
   test("leaves files in pending when the sink reports failure", async () => {

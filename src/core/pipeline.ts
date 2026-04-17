@@ -9,6 +9,12 @@ import {
   type PreToolUseRequest,
 } from "./types";
 import { anyPatternMatches, matchPolicies, toolInputHaystack } from "./policy";
+import {
+  DEFAULT_REDACT_RULES,
+  redact,
+  redactString,
+  type RedactRule,
+} from "./redact";
 
 export interface PipelineDeps {
   llm: LlmJudge;
@@ -18,6 +24,8 @@ export interface PipelineDeps {
   getSnapshot: () => { policies: Policy[]; index: IndexConfig };
   /** Override for tests; defaults to Date.now / new Date(). */
   now?: () => Date;
+  /** Extra rules merged onto DEFAULT_REDACT_RULES before audit write. */
+  redactRules?: readonly RedactRule[];
 }
 
 /** Stable cache key: tool name + sorted JSON of tool_input. */
@@ -78,6 +86,7 @@ function checkHardRules(
 
 export function createPipeline(deps: PipelineDeps) {
   const now = deps.now ?? (() => new Date());
+  const rules = deps.redactRules ?? DEFAULT_REDACT_RULES;
 
   return {
     async decide(req: PreToolUseRequest): Promise<DecisionResult> {
@@ -87,7 +96,7 @@ export function createPipeline(deps: PipelineDeps) {
       // 1. hard rules
       const hard = checkHardRules(req, index);
       if (hard) {
-        await audit(deps.sink, req, hard, false, t0, now);
+        await audit(deps.sink, req, hard, false, t0, now, rules);
         return hard;
       }
 
@@ -96,7 +105,7 @@ export function createPipeline(deps: PipelineDeps) {
       const cached = deps.cache.get(key);
       if (cached) {
         const result: DecisionResult = { ...cached, source: "cache" };
-        await audit(deps.sink, req, result, true, t0, now);
+        await audit(deps.sink, req, result, true, t0, now, rules);
         return result;
       }
 
@@ -110,7 +119,7 @@ export function createPipeline(deps: PipelineDeps) {
           source: "fallback",
           matched_policies: [],
         };
-        await audit(deps.sink, req, result, false, t0, now);
+        await audit(deps.sink, req, result, false, t0, now, rules);
         return result;
       }
 
@@ -135,7 +144,7 @@ export function createPipeline(deps: PipelineDeps) {
         };
       }
 
-      await audit(deps.sink, req, result, false, t0, now);
+      await audit(deps.sink, req, result, false, t0, now, rules);
       return result;
     },
   };
@@ -153,15 +162,16 @@ async function audit(
   cacheHit: boolean,
   t0: number,
   now: () => Date,
+  rules: readonly RedactRule[],
 ): Promise<void> {
   const record: AuditRecord = {
     ts: now().toISOString(),
     session_id: req.session_id,
     cwd: req.cwd,
     tool_name: req.tool_name,
-    tool_input: req.tool_input,
+    tool_input: redact(req.tool_input, rules),
     decision: result.decision,
-    reason: result.reason,
+    reason: redactString(result.reason, rules),
     source: result.source,
     matched_policies: result.matched_policies,
     cache_hit: cacheHit,

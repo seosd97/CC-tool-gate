@@ -9,6 +9,7 @@ import {
   createPolicyRegistry,
   createSourceProvider,
 } from "./adapters/sources";
+import { DEFAULT_REDACT_RULES, parseExtraRules } from "./core/redact";
 
 async function main(): Promise<void> {
   const cfg = loadConfig();
@@ -52,6 +53,16 @@ async function main(): Promise<void> {
     }, 60_000);
   }
 
+  const extraRules = parseExtraRules(cfg.REDACT_PATTERNS, (raw, err) => {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `REDACT_PATTERNS: skipping invalid regex ${JSON.stringify(raw)} (${
+        err instanceof Error ? err.message : String(err)
+      })`,
+    );
+  });
+  const redactRules = [...DEFAULT_REDACT_RULES, ...extraRules];
+
   const app = createApp({
     authToken: cfg.AUTH_TOKEN,
     llm,
@@ -59,6 +70,7 @@ async function main(): Promise<void> {
     sink,
     getSnapshot: () => registry.snapshot(),
     reload: () => registry.reload(),
+    redactRules,
   });
 
   const server = Bun.serve({
