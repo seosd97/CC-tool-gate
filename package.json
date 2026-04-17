@@ -5,6 +5,8 @@
   "module": "src/main.ts",
   "type": "module",
   "private": true,
+  "license": "MIT",
+  "author": "seosd97",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/seosd97/CC-tool-gate.git"
