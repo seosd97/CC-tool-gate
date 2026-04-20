@@ -1,10 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { createApp } from "../../src/api/app";
 import type {
-  AuditRecord,
   AuditSink,
   DecisionCache,
-  DecisionResult,
   IndexConfig,
   LlmJudge,
   Policy,
@@ -26,15 +24,15 @@ function deps(over: {
   reload?: () => Promise<void>;
 } = {}) {
   const cache: DecisionCache = over.cache ?? {
-    _store: new Map<string, DecisionResult>(),
     get() {
       return undefined;
     },
     set() {},
+    clear() {},
     size() {
       return 0;
     },
-  } as any;
+  };
   const sink: AuditSink = over.sink ?? { write: async () => {} };
   return {
     authToken: TOKEN,
@@ -144,5 +142,24 @@ describe("api app", () => {
     expect(called).toBe(1);
     const body = (await res.json()) as { ok: boolean };
     expect(body.ok).toBe(true);
+  });
+
+  test("POST /admin/reload clears the decision cache", async () => {
+    let cleared = 0;
+    const cache: DecisionCache = {
+      get: () => undefined,
+      set: () => {},
+      clear: () => {
+        cleared++;
+      },
+      size: () => 0,
+    };
+    const app = createApp(deps({ cache }));
+    const res = await app.request("/admin/reload", {
+      method: "POST",
+      headers: { authorization: `Bearer ${TOKEN}` },
+    });
+    expect(res.status).toBe(200);
+    expect(cleared).toBe(1);
   });
 });

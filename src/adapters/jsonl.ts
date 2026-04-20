@@ -16,10 +16,9 @@ export interface JsonlSinkOptions {
 export interface JsonlSinkHandle extends AuditSink {
   /** Force rotation if there is anything to rotate. Returns the gz file path or null. */
   rotateNow(): Promise<string | null>;
-  /** Returns the current open file path. */
-  currentPath(): string;
   pendingDir(): string;
   uploadedDir(): string;
+  deadLetterDir(): string;
 }
 
 export function createJsonlSink(opts: JsonlSinkOptions): JsonlSinkHandle {
@@ -30,6 +29,7 @@ export function createJsonlSink(opts: JsonlSinkOptions): JsonlSinkHandle {
   const current = join(opts.logsDir, "current.jsonl");
   const pending = join(opts.logsDir, "pending");
   const uploaded = join(opts.logsDir, "uploaded");
+  const deadLetter = join(opts.logsDir, "dead-letter");
 
   // Ensure dirs eagerly (non-blocking await chain via in-flight promise).
   let ensured: Promise<void> | null = null;
@@ -39,6 +39,7 @@ export function createJsonlSink(opts: JsonlSinkOptions): JsonlSinkHandle {
         await mkdir(opts.logsDir, { recursive: true });
         await mkdir(pending, { recursive: true });
         await mkdir(uploaded, { recursive: true });
+        await mkdir(deadLetter, { recursive: true });
       })();
     }
     return ensured;
@@ -92,16 +93,33 @@ export function createJsonlSink(opts: JsonlSinkOptions): JsonlSinkHandle {
     }
   };
 
+  /**
+   * Rotate through the writeChain so we never race `append`'s internal
+   * rotation. Without this, the external 60s timer in main.ts would call
+   * rotate() while append() was also rotating — causing stat/rename to
+   * ENOENT-throw and producing unhandled rejections.
+   */
+  const rotateChained = async (): Promise<string | null> => {
+    let result: string | null = null;
+    writeChain = writeChain
+      .then(async () => {
+        result = await rotate();
+      })
+      .catch(() => {});
+    await writeChain;
+    return result;
+  };
+
   return {
     async write(record: AuditRecord) {
       const line = JSON.stringify(record) + "\n";
       writeChain = writeChain.then(() => append(line)).catch(() => {});
       await writeChain;
     },
-    rotateNow: rotate,
-    currentPath: () => current,
+    rotateNow: rotateChained,
     pendingDir: () => pending,
     uploadedDir: () => uploaded,
+    deadLetterDir: () => deadLetter,
   };
 }
 

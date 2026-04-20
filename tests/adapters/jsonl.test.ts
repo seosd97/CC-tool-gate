@@ -50,7 +50,16 @@ describe("jsonl sink", () => {
     }
     const pending = await listPendingGz(sink.pendingDir());
     expect(pending.length).toBeGreaterThanOrEqual(1);
-    const decoded = gunzipSync(new Uint8Array(await Bun.file(pending[0]!).arrayBuffer())).toString();
+    // Multiple writes can rotate within the same ms; file sort order is
+    // then decided by a random suffix, so inspect the union of all gz
+    // contents rather than indexing by position.
+    const decoded = (
+      await Promise.all(
+        pending.map(async (p) =>
+          gunzipSync(new Uint8Array(await Bun.file(p).arrayBuffer())).toString(),
+        ),
+      )
+    ).join("");
     expect(decoded).toContain('"session_id":"s0"');
   });
 
@@ -73,5 +82,35 @@ describe("jsonl sink", () => {
     await sink.write(rec()); // triggers age-based rotation
     const pending = await listPendingGz(sink.pendingDir());
     expect(pending.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("concurrent writes and rotateNow do not crash or lose data", async () => {
+    // Regression: before serialization, external rotateNow racing with
+    // append-triggered rotation produced ENOENT rename rejections and
+    // swallowed audit lines. After serializing through the writeChain,
+    // every line should survive somewhere on disk.
+    const sink = createJsonlSink({ logsDir: dir, maxBytes: 200, maxAgeMs: 60_000 });
+
+    const writes: Promise<unknown>[] = [];
+    const rotations: Promise<unknown>[] = [];
+    for (let i = 0; i < 40; i++) {
+      writes.push(sink.write(rec({ session_id: `s${i}` })));
+      if (i % 5 === 0) rotations.push(sink.rotateNow());
+    }
+    await Promise.all([...writes, ...rotations]);
+    // one more forced rotation to flush anything still in current.jsonl
+    await sink.rotateNow();
+
+    const pending = await listPendingGz(sink.pendingDir());
+    const decoded = (
+      await Promise.all(
+        pending.map(async (p) =>
+          gunzipSync(new Uint8Array(await Bun.file(p).arrayBuffer())).toString(),
+        ),
+      )
+    ).join("");
+    for (let i = 0; i < 40; i++) {
+      expect(decoded).toContain(`"session_id":"s${i}"`);
+    }
   });
 });

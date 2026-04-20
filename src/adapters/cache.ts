@@ -47,6 +47,9 @@ export function createMemoryCache(opts: MemoryCacheOptions): DecisionCache {
       map.set(key, { value, expiresAt: now() + opts.ttlMs });
       evict();
     },
+    clear() {
+      map.clear();
+    },
     size() {
       return map.size;
     },

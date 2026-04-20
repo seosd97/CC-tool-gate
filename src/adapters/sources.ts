@@ -10,12 +10,34 @@ import {
 
 const INDEX_FILES = new Set(["index.yaml", "index.yml"]);
 
+const HTTP_TIMEOUT_MS = 10_000;
+
 /** Dispatch a URI like file:// / https:// / inline: to the right loader. */
 export function createSourceProvider(uri: string): SourceProvider {
   if (uri.startsWith("file://")) return fileSource(uri);
-  if (uri.startsWith("http://") || uri.startsWith("https://")) return httpSource(uri);
+  if (uri.startsWith("http://") || uri.startsWith("https://")) {
+    return httpSource(uri, HTTP_TIMEOUT_MS);
+  }
   if (uri.startsWith("inline:")) return inlineSource(uri);
   throw new Error(`Unsupported POLICY_SOURCES scheme: ${uri}`);
+}
+
+/** fetch wrapper that aborts after timeoutMs. */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(
+    () => ctrl.abort(new Error(`fetch timed out after ${timeoutMs}ms: ${url}`)),
+    timeoutMs,
+  );
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function fileSource(uri: string): SourceProvider {
@@ -59,7 +81,7 @@ interface HttpEntry {
  *  - point at an index.json listing files: { policies: [{name, url}], index?: string }
  *  - or a single .md file (loaded as one policy)
  */
-function httpSource(uri: string): SourceProvider {
+function httpSource(uri: string, timeoutMs: number): SourceProvider {
   let etag: string | null = null;
   let cached: { policies: Policy[]; index?: IndexConfig } = { policies: [] };
 
@@ -68,7 +90,7 @@ function httpSource(uri: string): SourceProvider {
     async load() {
       const headers: Record<string, string> = {};
       if (etag) headers["if-none-match"] = etag;
-      const res = await fetch(uri, { headers });
+      const res = await fetchWithTimeout(uri, { headers }, timeoutMs);
       if (res.status === 304) return cached;
       if (!res.ok) throw new Error(`HTTP source ${uri}: ${res.status}`);
       const newEtag = res.headers.get("etag");
@@ -84,7 +106,7 @@ function httpSource(uri: string): SourceProvider {
         };
         const policies: Policy[] = [];
         for (const entry of manifest.policies ?? []) {
-          const r = await fetch(entry.url);
+          const r = await fetchWithTimeout(entry.url, {}, timeoutMs);
           if (!r.ok) continue;
           const body = await r.text();
           const p = parsePolicy(entry.url, body);
@@ -92,7 +114,7 @@ function httpSource(uri: string): SourceProvider {
         }
         let index: IndexConfig | undefined;
         if (manifest.index) {
-          const r = await fetch(manifest.index);
+          const r = await fetchWithTimeout(manifest.index, {}, timeoutMs);
           if (r.ok) {
             const parsed = IndexConfig.safeParse(parseYaml(await r.text()));
             if (parsed.success) index = parsed.data;
@@ -131,7 +153,6 @@ export interface PolicyRegistry {
 export interface RegistryOptions {
   sources: SourceProvider[];
   pollMs?: number;
-  fallbackIndex?: IndexConfig;
 }
 
 const EMPTY_INDEX: IndexConfig = {
@@ -142,7 +163,7 @@ const EMPTY_INDEX: IndexConfig = {
 export function createPolicyRegistry(opts: RegistryOptions): PolicyRegistry {
   const interval = opts.pollMs ?? 60_000;
   let policies: Policy[] = [];
-  let index: IndexConfig = opts.fallbackIndex ?? EMPTY_INDEX;
+  let index: IndexConfig = EMPTY_INDEX;
   let timer: ReturnType<typeof setInterval> | null = null;
 
   const reload = async (): Promise<void> => {

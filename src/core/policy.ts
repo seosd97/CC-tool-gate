@@ -55,14 +55,46 @@ export function toolInputHaystack(toolInput: Record<string, unknown>): string {
   return parts.join("\n");
 }
 
-/** True if any pattern matches the haystack (regex, case-insensitive). */
-export function anyPatternMatches(patterns: string[], haystack: string): boolean {
-  for (const p of patterns) {
+/**
+ * Precompiled form: `null` means the source string was not a valid regex and
+ * callers must fall back to a case-insensitive substring match.
+ *
+ * Cached per `patterns` array reference. Policy and IndexConfig arrays are
+ * treated as immutable once parsed, so this is safe; if you ever mutate a
+ * patterns array in place, throw away the old reference instead.
+ */
+const compiledCache = new WeakMap<readonly string[], (RegExp | null)[]>();
+
+function compilePatterns(patterns: readonly string[]): (RegExp | null)[] {
+  let cached = compiledCache.get(patterns);
+  if (cached) return cached;
+  cached = patterns.map((p) => {
     try {
-      if (new RegExp(p, "i").test(haystack)) return true;
+      return new RegExp(p, "i");
     } catch {
-      // Invalid regex: fall back to substring match.
-      if (haystack.toLowerCase().includes(p.toLowerCase())) return true;
+      return null;
+    }
+  });
+  compiledCache.set(patterns, cached);
+  return cached;
+}
+
+/** True if any pattern matches the haystack (regex, case-insensitive). */
+export function anyPatternMatches(
+  patterns: readonly string[],
+  haystack: string,
+): boolean {
+  if (patterns.length === 0) return false;
+  const compiled = compilePatterns(patterns);
+  let lowered: string | null = null;
+  for (let i = 0; i < patterns.length; i++) {
+    const rx = compiled[i];
+    if (rx) {
+      if (rx.test(haystack)) return true;
+    } else {
+      // Invalid regex: fall back to substring match (case-insensitive).
+      if (lowered === null) lowered = haystack.toLowerCase();
+      if (lowered.includes(patterns[i]!.toLowerCase())) return true;
     }
   }
   return false;

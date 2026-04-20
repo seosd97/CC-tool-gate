@@ -13,15 +13,6 @@ export const PreToolUseRequest = z.object({
 });
 export type PreToolUseRequest = z.infer<typeof PreToolUseRequest>;
 
-export const PreToolUseResponse = z.object({
-  hookSpecificOutput: z.object({
-    hookEventName: z.literal("PreToolUse"),
-    permissionDecision: PermissionDecision,
-    permissionDecisionReason: z.string(),
-  }),
-});
-export type PreToolUseResponse = z.infer<typeof PreToolUseResponse>;
-
 export const PolicyFrontmatter = z.object({
   name: z.string().min(1),
   description: z.string().default(""),
@@ -72,7 +63,7 @@ export type LlmDecision = z.infer<typeof LlmDecision>;
 export interface DecisionResult {
   decision: PermissionDecision;
   reason: string;
-  source: "hard_deny" | "hard_allow" | "cache" | "llm" | "fallback";
+  source: "hard_deny" | "hard_allow" | "cache" | "llm" | "fallback" | "rate_limit";
   matched_policies: string[];
 }
 
@@ -102,6 +93,7 @@ export interface LlmJudge {
 export interface DecisionCache {
   get(key: string): DecisionResult | undefined;
   set(key: string, value: DecisionResult): void;
+  clear(): void;
   size(): number;
 }
 

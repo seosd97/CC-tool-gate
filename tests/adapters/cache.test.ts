@@ -38,4 +38,14 @@ describe("memory cache", () => {
     expect(c.get("c")?.decision).toBe("ask");
     expect(c.size()).toBe(2);
   });
+
+  test("clear drops all entries", () => {
+    const c = createMemoryCache({ ttlMs: 10_000, maxEntries: 5 });
+    c.set("a", v("allow"));
+    c.set("b", v("deny"));
+    expect(c.size()).toBe(2);
+    c.clear();
+    expect(c.size()).toBe(0);
+    expect(c.get("a")).toBeUndefined();
+  });
 });

@@ -11,12 +11,12 @@ import type {
   PreToolUseRequest,
 } from "../../src/core/types";
 
-function fakeCache(): DecisionCache & { _store: Map<string, DecisionResult> } {
+function fakeCache(): DecisionCache {
   const store = new Map<string, DecisionResult>();
   return {
-    _store: store,
     get: (k) => store.get(k),
     set: (k, v) => void store.set(k, v),
+    clear: () => store.clear(),
     size: () => store.size,
   };
 }
@@ -184,5 +184,82 @@ describe("pipeline", () => {
     expect(rec.ts).toBe("2026-04-17T00:00:00.000Z");
     expect(rec.latency_ms).toBeGreaterThanOrEqual(0);
     expect(rec.matched_policies).toEqual(["default"]);
+  });
+
+  test("audit records redact secrets in tool_input and reason", async () => {
+    const p = createPipeline({
+      llm: fakeLlm(async () => ({
+        decision: "deny",
+        reason: "refused call to Authorization: Bearer sk_live_leaked",
+      })),
+      cache,
+      sink,
+      getSnapshot: () => ({ policies: [policy()], index: baseIndex }),
+    });
+    await p.decide(
+      req({
+        tool_input: {
+          command: "curl -H 'Authorization: Bearer tok.secret.xyz' https://x",
+        },
+      }),
+    );
+    const rec = sink.records[0]!;
+    const cmd = (rec.tool_input as { command: string }).command;
+    expect(cmd).toContain("Authorization: Bearer [REDACTED]");
+    expect(cmd).not.toContain("tok.secret.xyz");
+    expect(rec.reason).toContain("Authorization: Bearer [REDACTED]");
+    expect(rec.reason).not.toContain("sk_live_leaked");
+  });
+
+  test("rate-limited requests short-circuit with source=rate_limit", async () => {
+    const rateLimiter = {
+      check: (_key: string) => ({ allowed: false, retryAfterMs: 2_500 }),
+      size: () => 1,
+    };
+    const p = createPipeline({
+      llm: fakeLlm(async () => {
+        throw new Error("LLM must not be called for rate-limited requests");
+      }),
+      cache,
+      sink,
+      getSnapshot: () => ({ policies: [policy()], index: baseIndex }),
+      rateLimiter,
+    });
+    const r = await p.decide(req());
+    expect(r.decision).toBe("deny");
+    expect(r.source).toBe("rate_limit");
+    expect(r.reason).toContain("retry in 3s");
+    expect(sink.records).toHaveLength(1);
+    expect(sink.records[0]!.source).toBe("rate_limit");
+  });
+
+  test("allowed rate-limit requests fall through to normal pipeline", async () => {
+    const rateLimiter = {
+      check: (_key: string) => ({ allowed: true, retryAfterMs: 0 }),
+      size: () => 1,
+    };
+    const p = createPipeline({
+      llm: fakeLlm(async () => ({ decision: "allow", reason: "fine" })),
+      cache,
+      sink,
+      getSnapshot: () => ({ policies: [policy()], index: baseIndex }),
+      rateLimiter,
+    });
+    const r = await p.decide(req());
+    expect(r.decision).toBe("allow");
+    expect(r.source).toBe("llm");
+  });
+
+  test("custom redactRules override defaults", async () => {
+    const p = createPipeline({
+      llm: fakeLlm(async () => ({ decision: "allow", reason: "fine" })),
+      cache,
+      sink,
+      getSnapshot: () => ({ policies: [policy()], index: baseIndex }),
+      redactRules: [{ pattern: /echo/g, replacement: "[ECHO]" }],
+    });
+    await p.decide(req({ tool_input: { command: "echo hi" } }));
+    const rec = sink.records[0]!;
+    expect((rec.tool_input as { command: string }).command).toBe("[ECHO] hi");
   });
 });

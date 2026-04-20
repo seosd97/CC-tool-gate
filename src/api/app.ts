@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import { bearerAuth } from "hono/bearer-auth";
-import { z } from "zod";
 import { createPipeline } from "../core/pipeline";
+import type { RedactRule } from "../core/redact";
+import type { RateLimiter } from "../core/ratelimit";
 import {
   PreToolUseRequest,
   type DecisionCache,
@@ -18,6 +19,8 @@ export interface AppDeps {
   sink: AuditSink;
   getSnapshot: () => { policies: Policy[]; index: IndexConfig };
   reload: () => Promise<void>;
+  redactRules?: readonly RedactRule[];
+  rateLimiter?: RateLimiter;
 }
 
 export function createApp(deps: AppDeps): Hono {
@@ -27,6 +30,8 @@ export function createApp(deps: AppDeps): Hono {
     cache: deps.cache,
     sink: deps.sink,
     getSnapshot: deps.getSnapshot,
+    redactRules: deps.redactRules,
+    rateLimiter: deps.rateLimiter,
   });
 
   app.get("/health", (c) =>
@@ -72,6 +77,9 @@ export function createApp(deps: AppDeps): Hono {
 
   protectedRoutes.post("/admin/reload", async (c) => {
     await deps.reload();
+    // Policies may have changed — drop cached decisions so the next request
+    // is evaluated under the new rules instead of returning a stale verdict.
+    deps.cache.clear();
     const snap = deps.getSnapshot();
     return c.json({ ok: true, policies: snap.policies.length });
   });
@@ -79,7 +87,3 @@ export function createApp(deps: AppDeps): Hono {
   app.route("/", protectedRoutes);
   return app;
 }
-
-// Re-export the schema in case other modules want it for testing.
-export { PreToolUseRequest };
-export type { z };
