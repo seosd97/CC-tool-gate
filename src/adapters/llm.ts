@@ -50,14 +50,7 @@ export function createLlmJudge(opts: LlmJudgeOptions): LlmJudge {
       const response = await client.messages.create({
         model: opts.model,
         max_tokens: 256,
-        system: [
-          { type: "text", text: SYSTEM_PROMPT },
-          {
-            type: "text",
-            text: `Policies in scope:\n\n${policiesText}`,
-            cache_control: { type: "ephemeral" },
-          },
-        ],
+        system: `${SYSTEM_PROMPT}\n\nPolicies in scope:\n\n${policiesText}`,
         messages: [{ role: "user", content: userText }],
       });
 

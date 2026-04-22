@@ -31,22 +31,10 @@ export interface PipelineDeps {
   rateLimiter?: RateLimiter;
 }
 
-/** Stable cache key: tool name + sorted JSON of tool_input. */
+/** Cache key: tool name + JSON of tool_input. Claude Code's hook sends
+ * fields in a consistent order, so insertion-order JSON is stable enough. */
 export function makeCacheKey(req: PreToolUseRequest): string {
-  return `${req.tool_name}|${stableStringify(req.tool_input)}`;
-}
-
-function stableStringify(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) {
-    return `[${value.map(stableStringify).join(",")}]`;
-  }
-  const entries = Object.entries(value as Record<string, unknown>).sort(
-    ([a], [b]) => (a < b ? -1 : a > b ? 1 : 0),
-  );
-  return `{${entries
-    .map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`)
-    .join(",")}}`;
+  return `${req.tool_name}|${JSON.stringify(req.tool_input)}`;
 }
 
 function checkHardRules(
@@ -93,11 +81,11 @@ export function createPipeline(deps: PipelineDeps) {
       // 0. rate limit (before even reading policies — the point is to cap
       // work during a flood)
       if (deps.rateLimiter) {
-        const rl = deps.rateLimiter.check(req.session_id);
+        const rl = deps.rateLimiter.check();
         if (!rl.allowed) {
           const result: DecisionResult = {
             decision: "deny",
-            reason: `Rate limit exceeded for session; retry in ${Math.ceil(rl.retryAfterMs / 1000)}s`,
+            reason: `Rate limit exceeded; retry in ${Math.ceil(rl.retryAfterMs / 1000)}s`,
             source: "rate_limit",
             matched_policies: [],
           };
