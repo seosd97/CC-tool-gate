@@ -101,7 +101,7 @@ commands (`rm -rf /`, fork bombs, `mkfs.*`, `dd if=...of=/dev/sd*`).
 
 ### `GET /health`
 
-Public. Returns `{ ok: true, policies: <count>, cache_size: <n> }`.
+Public. Returns `{ ok: true }`.
 
 ### `POST /v1/pretooluse`
 

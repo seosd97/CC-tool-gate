@@ -30,8 +30,6 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const startTime = Date.now();
-
   const cache = createMemoryCache({
     ttlMs: cfg.CACHE_TTL_MS,
     maxEntries: cfg.CACHE_MAX,
@@ -66,7 +64,6 @@ async function main(): Promise<void> {
     reload: () => registry.reload(),
     redactRules: DEFAULT_REDACT_RULES,
     rateLimiter,
-    startTime,
   });
 
   const server = Bun.serve({
