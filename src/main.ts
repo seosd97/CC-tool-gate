@@ -1,3 +1,4 @@
+import { watch } from "node:fs";
 import { createMemoryCache } from "./adapters/cache";
 import { createJsonlSink } from "./adapters/jsonl";
 import { createLlmJudge } from "./adapters/llm";
@@ -10,6 +11,14 @@ import { DEFAULT_REDACT_RULES } from "./core/redact";
 
 const logger = createLogger();
 
+function debounce<T extends (...args: unknown[]) => void>(fn: T, ms: number): T {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  return ((...args: unknown[]) => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), ms);
+  }) as T;
+}
+
 async function main(): Promise<void> {
   let cfg: AppConfig;
   try {
@@ -20,6 +29,8 @@ async function main(): Promise<void> {
     });
     process.exit(1);
   }
+
+  const startTime = Date.now();
 
   const cache = createMemoryCache({
     ttlMs: cfg.CACHE_TTL_MS,
@@ -55,6 +66,7 @@ async function main(): Promise<void> {
     reload: () => registry.reload(),
     redactRules: DEFAULT_REDACT_RULES,
     rateLimiter,
+    startTime,
   });
 
   const server = Bun.serve({
@@ -73,6 +85,41 @@ async function main(): Promise<void> {
     logger.warn("No policies loaded", {
       sources: cfg.POLICY_SOURCES,
     });
+  }
+
+  // Watch policy directories for changes and auto-reload
+  const watchedDirs = new Set<string>();
+  const debouncedReload = debounce(() => {
+    logger.info("Policy files changed, reloading");
+    registry
+      .reload()
+      .then(() => {
+        cache.clear();
+        logger.info("Policy reload complete", {
+          policies: registry.snapshot().policies.length,
+        });
+      })
+      .catch((err: unknown) => {
+        logger.error("Policy reload failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+  }, 500);
+
+  for (const uri of cfg.POLICY_SOURCES) {
+    if (uri.startsWith("file://")) {
+      const dir = uri.replace(/^file:\/\//, "");
+      if (watchedDirs.has(dir)) continue;
+      watchedDirs.add(dir);
+      try {
+        watch(dir, { recursive: true }, () => {
+          debouncedReload();
+        });
+        logger.info("Watching policy directory", { dir });
+      } catch {
+        logger.warn("Failed to watch policy directory", { dir });
+      }
+    }
   }
 
   let shuttingDown = false;

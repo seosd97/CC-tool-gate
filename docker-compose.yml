@@ -1,0 +1,15 @@
+services:
+  gate:
+    build: .
+    env_file: .env
+    volumes:
+      - ./policies:/etc/cc-tool-gate/policies:ro
+      - ./logs:/app/logs
+    ports:
+      - "127.0.0.1:8787:8787"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8787/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s

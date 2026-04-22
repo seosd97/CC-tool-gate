@@ -22,6 +22,8 @@ export interface AppDeps {
   reload: () => Promise<void>;
   redactRules?: readonly RedactRule[];
   rateLimiter?: RateLimiter;
+  /** Server start timestamp (ms since epoch). Used by /health for uptime. */
+  startTime?: number;
 }
 
 export function createApp(deps: AppDeps): Hono {
@@ -40,6 +42,8 @@ export function createApp(deps: AppDeps): Hono {
       ok: true,
       policies: deps.getSnapshot().policies.length,
       cache_size: deps.cache.size(),
+      uptime_ms: Date.now() - (deps.startTime ?? Date.now()),
+      rate_limit_enabled: deps.rateLimiter !== undefined,
     }),
   );
 
