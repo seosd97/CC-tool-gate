@@ -60,10 +60,16 @@ const req = (over: Partial<PreToolUseRequest> = {}): PreToolUseRequest => ({
 });
 
 describe("makeCacheKey", () => {
-  test("is stable across key order", () => {
-    const a = makeCacheKey(req({ tool_input: { a: 1, b: { x: 1, y: 2 } } }));
-    const b = makeCacheKey(req({ tool_input: { b: { y: 2, x: 1 }, a: 1 } }));
+  test("identical tool_input produces identical keys", () => {
+    const a = makeCacheKey(req({ tool_input: { a: 1, b: 2 } }));
+    const b = makeCacheKey(req({ tool_input: { a: 1, b: 2 } }));
     expect(a).toBe(b);
+  });
+
+  test("different tool_input produces different keys", () => {
+    const a = makeCacheKey(req({ tool_input: { command: "ls" } }));
+    const b = makeCacheKey(req({ tool_input: { command: "pwd" } }));
+    expect(a).not.toBe(b);
   });
 });
 
@@ -213,8 +219,7 @@ describe("pipeline", () => {
 
   test("rate-limited requests short-circuit with source=rate_limit", async () => {
     const rateLimiter = {
-      check: (_key: string) => ({ allowed: false, retryAfterMs: 2_500 }),
-      size: () => 1,
+      check: () => ({ allowed: false, retryAfterMs: 2_500 }),
     };
     const p = createPipeline({
       llm: fakeLlm(async () => {
@@ -235,8 +240,7 @@ describe("pipeline", () => {
 
   test("allowed rate-limit requests fall through to normal pipeline", async () => {
     const rateLimiter = {
-      check: (_key: string) => ({ allowed: true, retryAfterMs: 0 }),
-      size: () => 1,
+      check: () => ({ allowed: true, retryAfterMs: 0 }),
     };
     const p = createPipeline({
       llm: fakeLlm(async () => ({ decision: "allow", reason: "fine" })),

@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { mergePolicies, parsePolicy } from "../core/policy";
+import { mergePolicies, parsePolicy, validatePatterns } from "../core/policy";
 import {
   IndexConfig,
   type Policy,
@@ -10,34 +10,28 @@ import {
 
 const INDEX_FILES = new Set(["index.yaml", "index.yml"]);
 
-const HTTP_TIMEOUT_MS = 10_000;
-
-/** Dispatch a URI like file:// / https:// / inline: to the right loader. */
-export function createSourceProvider(uri: string): SourceProvider {
-  if (uri.startsWith("file://")) return fileSource(uri);
-  if (uri.startsWith("http://") || uri.startsWith("https://")) {
-    return httpSource(uri, HTTP_TIMEOUT_MS);
-  }
-  if (uri.startsWith("inline:")) return inlineSource(uri);
-  throw new Error(`Unsupported POLICY_SOURCES scheme: ${uri}`);
+/** Drop invalid regexes from a parsed IndexConfig before handing it to the pipeline. */
+function sanitizeIndex(index: IndexConfig, source: string): IndexConfig {
+  return {
+    hard_deny: {
+      tool_names: index.hard_deny.tool_names,
+      patterns: validatePatterns(index.hard_deny.patterns, `${source} hard_deny`),
+    },
+    hard_allow: {
+      tool_names: index.hard_allow.tool_names,
+      patterns: validatePatterns(index.hard_allow.patterns, `${source} hard_allow`),
+    },
+  };
 }
 
-/** fetch wrapper that aborts after timeoutMs. */
-async function fetchWithTimeout(
-  url: string,
-  init: RequestInit,
-  timeoutMs: number,
-): Promise<Response> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(
-    () => ctrl.abort(new Error(`fetch timed out after ${timeoutMs}ms: ${url}`)),
-    timeoutMs,
-  );
-  try {
-    return await fetch(url, { ...init, signal: ctrl.signal });
-  } finally {
-    clearTimeout(timer);
-  }
+/**
+ * Only `file://` is supported. Remote (https://) and base64 (inline:) sources
+ * were dropped along with the upload pipeline — for a personal-use gate,
+ * a directory checked into your deploy is the right shape.
+ */
+export function createSourceProvider(uri: string): SourceProvider {
+  if (uri.startsWith("file://")) return fileSource(uri);
+  throw new Error(`Unsupported POLICY_SOURCES scheme: ${uri} (only file:// is supported)`);
 }
 
 function fileSource(uri: string): SourceProvider {
@@ -58,7 +52,7 @@ function fileSource(uri: string): SourceProvider {
         if (INDEX_FILES.has(name)) {
           const raw = await readFile(full, "utf8");
           const parsed = IndexConfig.safeParse(parseYaml(raw));
-          if (parsed.success) index = parsed.data;
+          if (parsed.success) index = sanitizeIndex(parsed.data, `${uri}#${name}`);
           continue;
         }
         if (extname(name).toLowerCase() !== ".md") continue;
@@ -71,88 +65,15 @@ function fileSource(uri: string): SourceProvider {
   };
 }
 
-interface HttpEntry {
-  name: string;
-  url: string;
-}
-
-/**
- * https:// loader. Expects the URL to either:
- *  - point at an index.json listing files: { policies: [{name, url}], index?: string }
- *  - or a single .md file (loaded as one policy)
- */
-function httpSource(uri: string, timeoutMs: number): SourceProvider {
-  let etag: string | null = null;
-  let cached: { policies: Policy[]; index?: IndexConfig } = { policies: [] };
-
-  return {
-    uri,
-    async load() {
-      const headers: Record<string, string> = {};
-      if (etag) headers["if-none-match"] = etag;
-      const res = await fetchWithTimeout(uri, { headers }, timeoutMs);
-      if (res.status === 304) return cached;
-      if (!res.ok) throw new Error(`HTTP source ${uri}: ${res.status}`);
-      const newEtag = res.headers.get("etag");
-      const text = await res.text();
-
-      if (uri.endsWith(".md")) {
-        const policy = parsePolicy(uri, text);
-        cached = { policies: policy ? [policy] : [] };
-      } else {
-        const manifest = JSON.parse(text) as {
-          policies?: HttpEntry[];
-          index?: string;
-        };
-        const policies: Policy[] = [];
-        for (const entry of manifest.policies ?? []) {
-          const r = await fetchWithTimeout(entry.url, {}, timeoutMs);
-          if (!r.ok) continue;
-          const body = await r.text();
-          const p = parsePolicy(entry.url, body);
-          if (p) policies.push(p);
-        }
-        let index: IndexConfig | undefined;
-        if (manifest.index) {
-          const r = await fetchWithTimeout(manifest.index, {}, timeoutMs);
-          if (r.ok) {
-            const parsed = IndexConfig.safeParse(parseYaml(await r.text()));
-            if (parsed.success) index = parsed.data;
-          }
-        }
-        cached = { policies, index };
-      }
-      etag = newEtag;
-      return cached;
-    },
-  };
-}
-
-function inlineSource(uri: string): SourceProvider {
-  const b64 = uri.slice("inline:".length);
-  return {
-    uri,
-    async load() {
-      const text = Buffer.from(b64, "base64").toString("utf8");
-      const policy = parsePolicy(uri, text);
-      return { policies: policy ? [policy] : [] };
-    },
-  };
-}
-
 export interface PolicyRegistry {
   /** Atomic snapshot for the pipeline. */
   snapshot(): { policies: Policy[]; index: IndexConfig };
   /** Reload all sources now. */
   reload(): Promise<void>;
-  /** Begin polling. */
-  start(): void;
-  stop(): void;
 }
 
 export interface RegistryOptions {
   sources: SourceProvider[];
-  pollMs?: number;
 }
 
 const EMPTY_INDEX: IndexConfig = {
@@ -161,10 +82,8 @@ const EMPTY_INDEX: IndexConfig = {
 };
 
 export function createPolicyRegistry(opts: RegistryOptions): PolicyRegistry {
-  const interval = opts.pollMs ?? 60_000;
   let policies: Policy[] = [];
   let index: IndexConfig = EMPTY_INDEX;
-  let timer: ReturnType<typeof setInterval> | null = null;
 
   const reload = async (): Promise<void> => {
     const layers: Policy[][] = [];
@@ -185,17 +104,5 @@ export function createPolicyRegistry(opts: RegistryOptions): PolicyRegistry {
   return {
     snapshot: () => ({ policies, index }),
     reload,
-    start() {
-      if (timer) return;
-      timer = setInterval(() => {
-        void reload();
-      }, interval);
-    },
-    stop() {
-      if (timer) {
-        clearInterval(timer);
-        timer = null;
-      }
-    },
   };
 }

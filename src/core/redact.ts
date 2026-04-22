@@ -56,8 +56,26 @@ export function redactString(
 }
 
 /**
+ * Keys whose *value* is treated as a secret regardless of shape. Needed
+ * because the pattern rules above only match key=value *inside* a single
+ * string; a structured tool_input like { password: "hunter2" } would
+ * otherwise pass through untouched.
+ *
+ * Matched case-insensitively, with common separators (-, _, .) stripped —
+ * so "api_key", "apiKey", "API-KEY", "api.key" all hit.
+ */
+const SENSITIVE_KEY_RE =
+  /^(?:password|passwd|pwd|secret|token|apikey|accesskey|accesstoken|secretkey|secretaccesskey|authtoken|authorization|privatekey|sessiontoken|clientsecret)$/i;
+
+function isSensitiveKey(key: string): boolean {
+  const normalized = key.replace(/[-_.]/g, "");
+  return SENSITIVE_KEY_RE.test(normalized);
+}
+
+/**
  * Recursively redact string leaves of a JSON-ish value. Keys are preserved,
- * non-string leaves (numbers, booleans, null) pass through.
+ * non-string leaves (numbers, booleans, null) pass through. Values under a
+ * sensitive key name (see SENSITIVE_KEY_RE) are scrubbed wholesale.
  */
 export function redact<T>(
   value: T,
@@ -68,29 +86,14 @@ export function redact<T>(
   if (value !== null && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      out[k] = redact(v, rules);
+      if (isSensitiveKey(k) && v != null && typeof v !== "object") {
+        out[k] = "[REDACTED]";
+      } else {
+        out[k] = redact(v, rules);
+      }
     }
     return out as T;
   }
   return value;
 }
 
-/**
- * Parse an extra-rules spec from env (comma-separated regex strings). Bad
- * regexes are dropped with a console warning; they're operator-supplied and
- * we'd rather fail open than crash the server.
- */
-export function parseExtraRules(
-  spec: string,
-  onBad?: (pattern: string, err: unknown) => void,
-): RedactRule[] {
-  const out: RedactRule[] = [];
-  for (const raw of spec.split(",").map((s) => s.trim()).filter(Boolean)) {
-    try {
-      out.push({ pattern: new RegExp(raw, "gi"), replacement: "[REDACTED]" });
-    } catch (err) {
-      onBad?.(raw, err);
-    }
-  }
-  return out;
-}

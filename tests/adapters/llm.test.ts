@@ -70,8 +70,8 @@ describe("createLlmJudge", () => {
     const out = await judge.judge({ request: req, policies });
     expect(out.decision).toBe("deny");
     expect(captured.model).toBe("claude-haiku-4-5");
-    expect(Array.isArray(captured.system)).toBe(true);
-    expect(captured.system[1].cache_control).toEqual({ type: "ephemeral" });
-    expect(captured.system[1].text).toContain("destructive");
+    expect(typeof captured.system).toBe("string");
+    expect(captured.system).toContain("destructive");
+    expect(captured.messages[0].content).toContain("rm -rf /");
   });
 });

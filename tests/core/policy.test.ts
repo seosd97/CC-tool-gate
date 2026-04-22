@@ -5,6 +5,7 @@ import {
   mergePolicies,
   parsePolicy,
   toolInputHaystack,
+  validatePatterns,
 } from "../../src/core/policy";
 import type { Policy, PreToolUseRequest } from "../../src/core/types";
 
@@ -58,21 +59,49 @@ describe("anyPatternMatches", () => {
   test("matches case-insensitive regex", () => {
     expect(anyPatternMatches(["\\.env"], "/path/.ENV")).toBe(true);
   });
-  test("falls back to substring on invalid regex", () => {
-    expect(anyPatternMatches(["[unclosed"], "x [unclosed y")).toBe(true);
-  });
   test("returns false when nothing matches", () => {
     expect(anyPatternMatches(["foo", "bar"], "baz")).toBe(false);
   });
   test("repeated calls with the same array reuse compiled regexes", () => {
-    // Hitting the precompile cache: mixed valid + invalid patterns called
-    // many times against varying haystacks must stay correct.
-    const patterns = ["\\.env", "[unclosed", "^echo "];
+    const patterns = ["\\.env", "^echo "];
     for (let i = 0; i < 100; i++) {
       expect(anyPatternMatches(patterns, "cat /etc/.env")).toBe(true);
-      expect(anyPatternMatches(patterns, "x [unclosed y")).toBe(true);
       expect(anyPatternMatches(patterns, "echo hi")).toBe(true);
       expect(anyPatternMatches(patterns, "nope")).toBe(false);
+    }
+  });
+});
+
+describe("validatePatterns", () => {
+  test("keeps valid regex and drops invalid ones", () => {
+    const warn = console.warn;
+    const warnings: string[] = [];
+    console.warn = (msg: string) => warnings.push(msg);
+    try {
+      const out = validatePatterns(["\\.env", "[unclosed", "^echo "], "test");
+      expect(out).toEqual(["\\.env", "^echo "]);
+      expect(warnings.length).toBe(1);
+      expect(warnings[0]).toContain("[unclosed");
+    } finally {
+      console.warn = warn;
+    }
+  });
+
+  test("parsePolicy drops invalid patterns from triggers", () => {
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      const raw = `---
+name: test
+triggers:
+  patterns: ["\\\\.env", "[bad"]
+---
+body`;
+      const p = parsePolicy("x", raw);
+      expect(p).not.toBeNull();
+      expect(p!.triggers.patterns).toEqual(["\\.env"]);
+    } finally {
+      console.warn = warn;
     }
   });
 });
