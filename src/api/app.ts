@@ -1,15 +1,16 @@
 import { Hono } from "hono";
 import { bearerAuth } from "hono/bearer-auth";
+import { bodyLimit } from "hono/body-limit";
 import { createPipeline } from "../core/pipeline";
-import type { RedactRule } from "../core/redact";
 import type { RateLimiter } from "../core/ratelimit";
+import type { RedactRule } from "../core/redact";
 import {
-  PreToolUseRequest,
-  type DecisionCache,
-  type LlmJudge,
   type AuditSink,
+  type DecisionCache,
   type IndexConfig,
+  type LlmJudge,
   type Policy,
+  PreToolUseRequest,
 } from "../core/types";
 
 export interface AppDeps {
@@ -45,7 +46,7 @@ export function createApp(deps: AppDeps): Hono {
   const protectedRoutes = new Hono();
   protectedRoutes.use("*", bearerAuth({ token: deps.authToken }));
 
-  protectedRoutes.post("/v1/pretooluse", async (c) => {
+  protectedRoutes.post("/v1/pretooluse", bodyLimit({ maxSize: 64 * 1024 }), async (c) => {
     let body: unknown;
     try {
       body = await c.req.json();

@@ -14,10 +14,7 @@ describe("loadConfig", () => {
       POLICY_SOURCES: "file:///etc/cc-tool-gate/policies, file://./local",
     });
     expect(cfg.AUTH_TOKEN).toBe("tok");
-    expect(cfg.POLICY_SOURCES).toEqual([
-      "file:///etc/cc-tool-gate/policies",
-      "file://./local",
-    ]);
+    expect(cfg.POLICY_SOURCES).toEqual(["file:///etc/cc-tool-gate/policies", "file://./local"]);
     expect(cfg.PORT).toBe(8787);
     expect(cfg.LLM_MODEL).toBe("claude-haiku-4-5");
   });

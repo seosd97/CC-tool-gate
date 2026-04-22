@@ -26,10 +26,10 @@ describe("parsePolicy", () => {
   test("parses valid frontmatter", () => {
     const p = parsePolicy("inline:test", sample);
     expect(p).not.toBeNull();
-    expect(p!.name).toBe("env-files");
-    expect(p!.triggers.tool_names).toEqual(["Bash", "Read"]);
-    expect(p!.default_decision).toBe("deny");
-    expect(p!.body).toContain("do not touch .env");
+    expect(p?.name).toBe("env-files");
+    expect(p?.triggers.tool_names).toEqual(["Bash", "Read"]);
+    expect(p?.default_decision).toBe("deny");
+    expect(p?.body).toContain("do not touch .env");
   });
 
   test("returns null on missing name", () => {
@@ -99,7 +99,7 @@ triggers:
 body`;
       const p = parsePolicy("x", raw);
       expect(p).not.toBeNull();
-      expect(p!.triggers.patterns).toEqual(["\\.env"]);
+      expect(p?.triggers.patterns).toEqual(["\\.env"]);
     } finally {
       console.warn = warn;
     }
@@ -154,7 +154,10 @@ describe("matchPolicies", () => {
   });
 
   test("tool_names filter excludes wrong tool", () => {
-    const out = matchPolicies(req({ tool_name: "Write", tool_input: { file_path: ".env" } }), policies);
+    const out = matchPolicies(
+      req({ tool_name: "Write", tool_input: { file_path: ".env" } }),
+      policies,
+    );
     expect(out.map((p) => p.name)).toEqual([]);
   });
 });
@@ -172,7 +175,7 @@ describe("mergePolicies", () => {
     const b: Policy = { ...a, description: "v2", source: "b" };
     const out = mergePolicies([[a], [b]]);
     expect(out).toHaveLength(1);
-    expect(out[0]!.description).toBe("v2");
-    expect(out[0]!.source).toBe("b");
+    expect(out[0]?.description).toBe("v2");
+    expect(out[0]?.source).toBe("b");
   });
 });

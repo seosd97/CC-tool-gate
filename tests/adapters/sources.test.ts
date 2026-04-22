@@ -2,10 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  createPolicyRegistry,
-  createSourceProvider,
-} from "../../src/adapters/sources";
+import { createPolicyRegistry, createSourceProvider } from "../../src/adapters/sources";
 import type { SourceProvider } from "../../src/core/types";
 
 const POLICY_MD = `---
@@ -106,7 +103,7 @@ describe("policy registry", () => {
     await reg.reload();
     const snap = reg.snapshot();
     expect(snap.policies).toHaveLength(1);
-    expect(snap.policies[0]!.description).toBe("v2");
+    expect(snap.policies[0]?.description).toBe("v2");
     expect(snap.index.hard_deny.tool_names).toEqual(["X"]);
   });
 

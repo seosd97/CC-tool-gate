@@ -96,7 +96,7 @@ describe("pipeline", () => {
     expect(r.decision).toBe("deny");
     expect(r.source).toBe("hard_deny");
     expect(sink.records).toHaveLength(1);
-    expect(sink.records[0]!.cache_hit).toBe(false);
+    expect(sink.records[0]?.cache_hit).toBe(false);
   });
 
   test("hard_allow short-circuits", async () => {
@@ -137,7 +137,7 @@ describe("pipeline", () => {
     expect(r2.decision).toBe("deny");
     expect(calls).toBe(1);
     expect(sink.records).toHaveLength(2);
-    expect(sink.records[1]!.cache_hit).toBe(true);
+    expect(sink.records[1]?.cache_hit).toBe(true);
   });
 
   test("falls back to policy default_decision when LLM throws", async () => {
@@ -235,7 +235,7 @@ describe("pipeline", () => {
     expect(r.source).toBe("rate_limit");
     expect(r.reason).toContain("retry in 3s");
     expect(sink.records).toHaveLength(1);
-    expect(sink.records[0]!.source).toBe("rate_limit");
+    expect(sink.records[0]?.source).toBe("rate_limit");
   });
 
   test("allowed rate-limit requests fall through to normal pipeline", async () => {

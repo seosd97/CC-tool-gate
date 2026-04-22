@@ -1,12 +1,9 @@
 import { readdir, readFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { parse as parseYaml } from "yaml";
+import type { Logger } from "../core/logger";
 import { mergePolicies, parsePolicy, validatePatterns } from "../core/policy";
-import {
-  IndexConfig,
-  type Policy,
-  type SourceProvider,
-} from "../core/types";
+import { IndexConfig, type Policy, type SourceProvider } from "../core/types";
 
 const INDEX_FILES = new Set(["index.yaml", "index.yml"]);
 
@@ -29,12 +26,12 @@ function sanitizeIndex(index: IndexConfig, source: string): IndexConfig {
  * were dropped along with the upload pipeline — for a personal-use gate,
  * a directory checked into your deploy is the right shape.
  */
-export function createSourceProvider(uri: string): SourceProvider {
-  if (uri.startsWith("file://")) return fileSource(uri);
+export function createSourceProvider(uri: string, logger?: Logger): SourceProvider {
+  if (uri.startsWith("file://")) return fileSource(uri, logger);
   throw new Error(`Unsupported POLICY_SOURCES scheme: ${uri} (only file:// is supported)`);
 }
 
-function fileSource(uri: string): SourceProvider {
+function fileSource(uri: string, logger?: Logger): SourceProvider {
   const dir = uri.replace(/^file:\/\//, "");
   return {
     uri,
@@ -44,7 +41,11 @@ function fileSource(uri: string): SourceProvider {
       let entries: string[];
       try {
         entries = await readdir(dir);
-      } catch {
+      } catch (err) {
+        logger?.warn("Policy source unreadable", {
+          uri,
+          error: err instanceof Error ? err.message : String(err),
+        });
         return { policies: [], index };
       }
       for (const name of entries.sort()) {

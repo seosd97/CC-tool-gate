@@ -1,10 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import {
-  LlmDecision,
-  type LlmJudge,
-  type Policy,
-  type PreToolUseRequest,
-} from "../core/types";
+import { LlmDecision, type LlmJudge } from "../core/types";
 
 export interface LlmJudgeOptions {
   apiKey: string;
@@ -28,8 +23,7 @@ Reply with ONLY a JSON object on a single line, no prose, no code fence:
 {"decision":"allow|deny|ask","reason":"<one sentence>"}`;
 
 export function createLlmJudge(opts: LlmJudgeOptions): LlmJudge {
-  const client =
-    opts.client ?? new Anthropic({ apiKey: opts.apiKey, timeout: opts.timeoutMs });
+  const client = opts.client ?? new Anthropic({ apiKey: opts.apiKey, timeout: opts.timeoutMs });
 
   return {
     async judge({ request, policies }) {

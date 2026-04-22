@@ -84,10 +84,7 @@ export interface AuditRecord {
 // ----- Interfaces (implemented in adapters/) -----
 
 export interface LlmJudge {
-  judge(input: {
-    request: PreToolUseRequest;
-    policies: Policy[];
-  }): Promise<LlmDecision>;
+  judge(input: { request: PreToolUseRequest; policies: Policy[] }): Promise<LlmDecision>;
 }
 
 export interface DecisionCache {
@@ -99,6 +96,8 @@ export interface DecisionCache {
 
 export interface AuditSink {
   write(record: AuditRecord): Promise<void>;
+  /** Wait for any pending writes to complete before shutdown. */
+  flush?(): Promise<void>;
 }
 
 export interface SourceProvider {

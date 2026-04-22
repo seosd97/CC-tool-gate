@@ -1,5 +1,5 @@
 import matter from "gray-matter";
-import { PolicyFrontmatter, type Policy, type PreToolUseRequest } from "./types";
+import { type Policy, PolicyFrontmatter, type PreToolUseRequest } from "./types";
 
 /**
  * Drop patterns that aren't valid JS regex, warning the operator for each.
@@ -16,9 +16,7 @@ export function validatePatterns(patterns: readonly string[], context: string): 
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       // eslint-disable-next-line no-console
-      console.warn(
-        `${context}: dropping invalid regex ${JSON.stringify(p)} (${msg})`,
-      );
+      console.warn(`${context}: dropping invalid regex ${JSON.stringify(p)} (${msg})`);
     }
   }
   return out;
@@ -97,10 +95,7 @@ function compilePatterns(patterns: readonly string[]): RegExp[] {
 }
 
 /** True if any pattern matches the haystack (regex, case-insensitive). */
-export function anyPatternMatches(
-  patterns: readonly string[],
-  haystack: string,
-): boolean {
+export function anyPatternMatches(patterns: readonly string[], haystack: string): boolean {
   if (patterns.length === 0) return false;
   const compiled = compilePatterns(patterns);
   for (const rx of compiled) {

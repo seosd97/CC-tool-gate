@@ -23,3 +23,6 @@ jobs:
 
       - name: Test
         run: bun test
+
+      - name: Lint & Format check
+        run: bun run check

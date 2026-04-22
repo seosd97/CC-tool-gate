@@ -39,7 +39,7 @@ export function createJsonlSink(opts: JsonlSinkOptions): JsonlSinkHandle {
 
   return {
     async write(record: AuditRecord) {
-      const line = JSON.stringify(record) + "\n";
+      const line = `${JSON.stringify(record)}\n`;
       writeChain = writeChain
         .then(async () => {
           await ensureDir();
@@ -49,5 +49,8 @@ export function createJsonlSink(opts: JsonlSinkOptions): JsonlSinkHandle {
       await writeChain;
     },
     currentPath: () => pathFor(now()),
+    async flush(): Promise<void> {
+      await writeChain;
+    },
   };
 }

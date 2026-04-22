@@ -1,21 +1,16 @@
-import {
-  type AuditRecord,
-  type AuditSink,
-  type DecisionCache,
-  type DecisionResult,
-  type IndexConfig,
-  type LlmJudge,
-  type Policy,
-  type PreToolUseRequest,
-} from "./types";
 import { anyPatternMatches, matchPolicies, toolInputHaystack } from "./policy";
-import {
-  DEFAULT_REDACT_RULES,
-  redact,
-  redactString,
-  type RedactRule,
-} from "./redact";
 import type { RateLimiter } from "./ratelimit";
+import { DEFAULT_REDACT_RULES, type RedactRule, redact, redactString } from "./redact";
+import type {
+  AuditRecord,
+  AuditSink,
+  DecisionCache,
+  DecisionResult,
+  IndexConfig,
+  LlmJudge,
+  Policy,
+  PreToolUseRequest,
+} from "./types";
 
 export interface PipelineDeps {
   llm: LlmJudge;
@@ -37,10 +32,7 @@ export function makeCacheKey(req: PreToolUseRequest): string {
   return `${req.tool_name}|${JSON.stringify(req.tool_input)}`;
 }
 
-function checkHardRules(
-  req: PreToolUseRequest,
-  index: IndexConfig,
-): DecisionResult | null {
+function checkHardRules(req: PreToolUseRequest, index: IndexConfig): DecisionResult | null {
   const haystack = toolInputHaystack(req.tool_input);
 
   if (
@@ -93,6 +85,9 @@ export function createPipeline(deps: PipelineDeps) {
           return result;
         }
       }
+
+      // NOTE: rate_limit results are intentionally NOT cached.
+      // Caching a time-sensitive denial would extend it past the rate window.
 
       // 1. hard rules
       const hard = checkHardRules(req, index);

@@ -254,7 +254,7 @@ src/
     pipeline.ts       hard rules -> cache -> LLM
     policy.ts         frontmatter parse + trigger match
     redact.ts         audit-log redaction (pattern + key-name rules)
-    ratelimit.ts      per-session sliding-window limiter
+    ratelimit.ts      global sliding-window limiter
   adapters/           implementations of core/types interfaces
     cache.ts          LRU + TTL
     llm.ts            Anthropic SDK call

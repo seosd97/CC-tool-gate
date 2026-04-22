@@ -2,11 +2,10 @@
  * Best-effort redaction of common secret shapes before audit records leave
  * the pipeline. Tool inputs can legitimately contain bearer tokens, API
  * keys, .env bodies, private keys, and so on; once written they land on
- * local disk and (if `STORAGE_BACKEND` is set) a cloud bucket, so we
- * scrub them here.
+ * local disk, so we scrub them here.
  *
  * The defaults are conservative and may not catch every custom secret
- * shape. Operators can add regexes via the `REDACT_PATTERNS` env var.
+ * shape. Pass custom RedactRule arrays to extend them at runtime.
  */
 
 export interface RedactRule {
@@ -21,7 +20,7 @@ export const DEFAULT_REDACT_RULES: readonly RedactRule[] = [
     replacement: "$1[REDACTED]",
   },
   // Bare "Bearer <token>" strings
-  { pattern: /(bearer\s+)[A-Za-z0-9._\-]{8,}/gi, replacement: "$1[REDACTED]" },
+  { pattern: /(bearer\s+)[A-Za-z0-9._-]{8,}/gi, replacement: "$1[REDACTED]" },
   // api_key=..., apiKey: ..., access-token=..., secret_access_key=...
   {
     pattern:
@@ -37,8 +36,7 @@ export const DEFAULT_REDACT_RULES: readonly RedactRule[] = [
   { pattern: /\bAKIA[0-9A-Z]{16}\b/g, replacement: "[REDACTED_AWS_KEY]" },
   // PEM-encoded private keys (RSA, EC, OPENSSH, generic)
   {
-    pattern:
-      /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g,
+    pattern: /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g,
     replacement: "[REDACTED_PRIVATE_KEY]",
   },
 ];
@@ -77,10 +75,7 @@ function isSensitiveKey(key: string): boolean {
  * non-string leaves (numbers, booleans, null) pass through. Values under a
  * sensitive key name (see SENSITIVE_KEY_RE) are scrubbed wholesale.
  */
-export function redact<T>(
-  value: T,
-  rules: readonly RedactRule[] = DEFAULT_REDACT_RULES,
-): T {
+export function redact<T>(value: T, rules: readonly RedactRule[] = DEFAULT_REDACT_RULES): T {
   if (typeof value === "string") return redactString(value, rules) as T;
   if (Array.isArray(value)) return value.map((v) => redact(v, rules)) as T;
   if (value !== null && typeof value === "object") {
@@ -96,4 +91,3 @@ export function redact<T>(
   }
   return value;
 }
-

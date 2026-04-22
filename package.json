@@ -28,15 +28,20 @@
     "start": "bun run src/main.ts",
     "dev": "bun --watch run src/main.ts",
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "biome lint src/ tests/",
+    "lint:fix": "biome lint --write src/ tests/",
+    "format": "biome format --write src/ tests/",
+    "check": "biome check src/ tests/",
+    "check:fix": "biome check --write src/ tests/"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.12",
     "@types/bun": "latest",
     "typescript": "^5"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",
-    "aws4fetch": "^1.0.20",
     "gray-matter": "^4.0.3",
     "hono": "^4.12.14",
     "yaml": "^2.8.3",

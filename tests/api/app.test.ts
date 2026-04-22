@@ -1,12 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createApp } from "../../src/api/app";
-import type {
-  AuditSink,
-  DecisionCache,
-  IndexConfig,
-  LlmJudge,
-  Policy,
-} from "../../src/core/types";
+import type { AuditSink, DecisionCache, IndexConfig, LlmJudge, Policy } from "../../src/core/types";
 
 const TOKEN = "secret-token";
 
@@ -15,14 +9,16 @@ const baseIndex: IndexConfig = {
   hard_allow: { tool_names: [], patterns: [] },
 };
 
-function deps(over: {
-  llm?: LlmJudge;
-  policies?: Policy[];
-  index?: IndexConfig;
-  cache?: DecisionCache;
-  sink?: AuditSink;
-  reload?: () => Promise<void>;
-} = {}) {
+function deps(
+  over: {
+    llm?: LlmJudge;
+    policies?: Policy[];
+    index?: IndexConfig;
+    cache?: DecisionCache;
+    sink?: AuditSink;
+    reload?: () => Promise<void>;
+  } = {},
+) {
   const cache: DecisionCache = over.cache ?? {
     get() {
       return undefined;
@@ -36,10 +32,9 @@ function deps(over: {
   const sink: AuditSink = over.sink ?? { write: async () => {} };
   return {
     authToken: TOKEN,
-    llm:
-      over.llm ?? {
-        judge: async () => ({ decision: "allow" as const, reason: "ok" }),
-      },
+    llm: over.llm ?? {
+      judge: async () => ({ decision: "allow" as const, reason: "ok" }),
+    },
     cache,
     sink,
     getSnapshot: () => ({ policies: over.policies ?? [], index: over.index ?? baseIndex }),

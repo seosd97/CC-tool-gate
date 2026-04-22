@@ -18,9 +18,7 @@ describe("redactString default rules", () => {
     expect(redactString("access-token=abcdef")).toBe("access-token=[REDACTED]");
     // The optional opening quote is consumed by the match; only the trailing
     // quote is left behind.
-    expect(redactString('secret_access_key="xyz"')).toBe(
-      'secret_access_key=[REDACTED]"',
-    );
+    expect(redactString('secret_access_key="xyz"')).toBe('secret_access_key=[REDACTED]"');
   });
 
   test("scrubs password assignments", () => {
@@ -29,9 +27,7 @@ describe("redactString default rules", () => {
   });
 
   test("scrubs AWS access key IDs", () => {
-    expect(redactString("AKIAIOSFODNN7EXAMPLE is leaked")).toBe(
-      "[REDACTED_AWS_KEY] is leaked",
-    );
+    expect(redactString("AKIAIOSFODNN7EXAMPLE is leaked")).toBe("[REDACTED_AWS_KEY] is leaked");
   });
 
   test("scrubs PEM private keys", () => {
@@ -111,4 +107,3 @@ describe("redact (recursive)", () => {
     );
   });
 });
-

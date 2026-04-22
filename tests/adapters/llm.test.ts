@@ -36,9 +36,7 @@ describe("createLlmJudge", () => {
         create: async (params: any) => {
           captured = params;
           return {
-            content: [
-              { type: "text", text: '{"decision":"deny","reason":"bad command"}' },
-            ],
+            content: [{ type: "text", text: '{"decision":"deny","reason":"bad command"}' }],
           };
         },
       },

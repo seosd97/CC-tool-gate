@@ -1,17 +1,25 @@
-import { loadConfig } from "./config";
-import { createApp } from "./api/app";
 import { createMemoryCache } from "./adapters/cache";
-import { createLlmJudge } from "./adapters/llm";
 import { createJsonlSink } from "./adapters/jsonl";
-import {
-  createPolicyRegistry,
-  createSourceProvider,
-} from "./adapters/sources";
-import { DEFAULT_REDACT_RULES } from "./core/redact";
+import { createLlmJudge } from "./adapters/llm";
+import { createPolicyRegistry, createSourceProvider } from "./adapters/sources";
+import { createApp } from "./api/app";
+import { type AppConfig, loadConfig } from "./config";
+import { createLogger } from "./core/logger";
 import { createRateLimiter } from "./core/ratelimit";
+import { DEFAULT_REDACT_RULES } from "./core/redact";
+
+const logger = createLogger();
 
 async function main(): Promise<void> {
-  const cfg = loadConfig();
+  let cfg: AppConfig;
+  try {
+    cfg = loadConfig();
+  } catch (err) {
+    logger.error("Failed to load configuration", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    process.exit(1);
+  }
 
   const cache = createMemoryCache({
     ttlMs: cfg.CACHE_TTL_MS,
@@ -26,7 +34,7 @@ async function main(): Promise<void> {
 
   const sink = createJsonlSink({ logsDir: cfg.LOGS_DIR });
 
-  const sources = cfg.POLICY_SOURCES.map((uri) => createSourceProvider(uri));
+  const sources = cfg.POLICY_SOURCES.map((uri) => createSourceProvider(uri, logger));
   const registry = createPolicyRegistry({ sources });
   await registry.reload();
 
@@ -56,33 +64,43 @@ async function main(): Promise<void> {
   });
 
   const policyCount = registry.snapshot().policies.length;
-  // eslint-disable-next-line no-console
-  console.log(
-    `cc-tool-gate listening on ${cfg.HOST}:${cfg.PORT} (policies=${policyCount})`,
-  );
+  logger.info("cc-tool-gate started", {
+    host: cfg.HOST,
+    port: cfg.PORT,
+    policies: policyCount,
+  });
   if (policyCount === 0) {
-    // eslint-disable-next-line no-console
-    console.warn(
-      `WARNING: 0 policies loaded from POLICY_SOURCES=${cfg.POLICY_SOURCES.join(",")}. The gate will fall back to "allow" for every request that isn't caught by index.yaml hard rules.`,
-    );
+    logger.warn("No policies loaded", {
+      sources: cfg.POLICY_SOURCES,
+    });
   }
 
   let shuttingDown = false;
-  const shutdown = (signal: string): void => {
+  const shutdown = async (signal: string): Promise<void> => {
     if (shuttingDown) return;
     shuttingDown = true;
-    // eslint-disable-next-line no-console
-    console.log(`received ${signal}, shutting down`);
+    logger.info("Shutting down", { signal });
     server.stop();
+    try {
+      await sink.flush?.();
+    } catch {
+      // Best-effort flush; don't block exit.
+    }
+    logger.info("Shutdown complete");
     process.exit(0);
   };
 
-  process.on("SIGTERM", () => shutdown("SIGTERM"));
-  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => {
+    shutdown("SIGTERM").catch(() => process.exit(1));
+  });
+  process.on("SIGINT", () => {
+    shutdown("SIGINT").catch(() => process.exit(1));
+  });
 }
 
 main().catch((err: unknown) => {
-  // eslint-disable-next-line no-console
-  console.error(err instanceof Error ? err.message : err);
+  logger.error("Unhandled error", {
+    error: err instanceof Error ? err.message : String(err),
+  });
   process.exit(1);
 });
