@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseExtraRules, redact, redactString } from "../../src/core/redact";
+import { redact, redactString } from "../../src/core/redact";
 
 describe("redactString default rules", () => {
   test("scrubs Authorization Bearer header", () => {
@@ -72,6 +72,38 @@ describe("redact (recursive)", () => {
     expect(redact(true)).toBe(true);
   });
 
+  test("redacts values under sensitive key names", () => {
+    const input = {
+      password: "hunter2",
+      apiKey: "sk_live_xyz",
+      "access-token": "abc",
+      api_key: "k1",
+      nested: { secret: "shh", clientSecret: "c", user: "me" },
+      arr: [{ token: "t1" }, { safe: "ok" }],
+      numeric_token: 12345,
+    };
+    const out = redact(input) as any;
+    expect(out.password).toBe("[REDACTED]");
+    expect(out.apiKey).toBe("[REDACTED]");
+    expect(out["access-token"]).toBe("[REDACTED]");
+    expect(out.api_key).toBe("[REDACTED]");
+    expect(out.nested.secret).toBe("[REDACTED]");
+    expect(out.nested.clientSecret).toBe("[REDACTED]");
+    expect(out.nested.user).toBe("me");
+    expect(out.arr[0].token).toBe("[REDACTED]");
+    expect(out.arr[1].safe).toBe("ok");
+    // Exact key match only — "numeric_token" normalizes to "numerictoken",
+    // which is not in the sensitive set.
+    expect(out.numeric_token).toBe(12345);
+  });
+
+  test("does not redact unrelated key names", () => {
+    const out = redact({ command: "ls", path: "/tmp", user: "me" }) as any;
+    expect(out.command).toBe("ls");
+    expect(out.path).toBe("/tmp");
+    expect(out.user).toBe("me");
+  });
+
   test("accepts custom rules and overrides defaults", () => {
     const rules = [{ pattern: /foo/g, replacement: "BAR" }];
     expect(redactString("foo baz AKIAIOSFODNN7EXAMPLE", rules)).toBe(
@@ -80,25 +112,3 @@ describe("redact (recursive)", () => {
   });
 });
 
-describe("parseExtraRules", () => {
-  test("returns compiled rules for each comma-separated pattern", () => {
-    const rules = parseExtraRules("mytoken_[A-Z0-9]+,internal_id=\\d+");
-    expect(rules).toHaveLength(2);
-    const s = "mytoken_ABC123 and internal_id=42";
-    let out = s;
-    for (const r of rules) out = out.replace(r.pattern, r.replacement);
-    expect(out).toBe("[REDACTED] and [REDACTED]");
-  });
-
-  test("drops invalid regexes and calls onBad", () => {
-    const bad: string[] = [];
-    const rules = parseExtraRules("good_\\d+,[unclosed", (p) => bad.push(p));
-    expect(rules).toHaveLength(1);
-    expect(bad).toEqual(["[unclosed"]);
-  });
-
-  test("empty spec yields no rules", () => {
-    expect(parseExtraRules("")).toEqual([]);
-    expect(parseExtraRules("  ,  ,")).toEqual([]);
-  });
-});

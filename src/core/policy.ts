@@ -2,6 +2,29 @@ import matter from "gray-matter";
 import { PolicyFrontmatter, type Policy, type PreToolUseRequest } from "./types";
 
 /**
+ * Drop patterns that aren't valid JS regex, warning the operator for each.
+ * Invalid patterns used to silently fall back to substring matching, which
+ * quietly weakened hard_deny rules — an operator typo could turn a strict
+ * deny into a no-op. Now we refuse to load them.
+ */
+export function validatePatterns(patterns: readonly string[], context: string): string[] {
+  const out: string[] = [];
+  for (const p of patterns) {
+    try {
+      new RegExp(p, "i");
+      out.push(p);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // eslint-disable-next-line no-console
+      console.warn(
+        `${context}: dropping invalid regex ${JSON.stringify(p)} (${msg})`,
+      );
+    }
+  }
+  return out;
+}
+
+/**
  * Parse a single Skill-style markdown file into a Policy. Returns null if the
  * frontmatter is missing or invalid (caller logs and skips).
  */
@@ -17,7 +40,10 @@ export function parsePolicy(source: string, raw: string): Policy | null {
   return {
     name: fm.data.name,
     description: fm.data.description,
-    triggers: fm.data.triggers,
+    triggers: {
+      tool_names: fm.data.triggers.tool_names,
+      patterns: validatePatterns(fm.data.triggers.patterns, `policy ${source}`),
+    },
     default_decision: fm.data.default_decision,
     body: parsed.content.trim(),
     source,
@@ -56,25 +82,16 @@ export function toolInputHaystack(toolInput: Record<string, unknown>): string {
 }
 
 /**
- * Precompiled form: `null` means the source string was not a valid regex and
- * callers must fall back to a case-insensitive substring match.
- *
- * Cached per `patterns` array reference. Policy and IndexConfig arrays are
- * treated as immutable once parsed, so this is safe; if you ever mutate a
- * patterns array in place, throw away the old reference instead.
+ * Patterns are validated at load time (see `validatePatterns`), so by the
+ * time we reach here every string compiles. Cached per array reference —
+ * arrays are treated as immutable once parsed.
  */
-const compiledCache = new WeakMap<readonly string[], (RegExp | null)[]>();
+const compiledCache = new WeakMap<readonly string[], RegExp[]>();
 
-function compilePatterns(patterns: readonly string[]): (RegExp | null)[] {
+function compilePatterns(patterns: readonly string[]): RegExp[] {
   let cached = compiledCache.get(patterns);
   if (cached) return cached;
-  cached = patterns.map((p) => {
-    try {
-      return new RegExp(p, "i");
-    } catch {
-      return null;
-    }
-  });
+  cached = patterns.map((p) => new RegExp(p, "i"));
   compiledCache.set(patterns, cached);
   return cached;
 }
@@ -86,16 +103,8 @@ export function anyPatternMatches(
 ): boolean {
   if (patterns.length === 0) return false;
   const compiled = compilePatterns(patterns);
-  let lowered: string | null = null;
-  for (let i = 0; i < patterns.length; i++) {
-    const rx = compiled[i];
-    if (rx) {
-      if (rx.test(haystack)) return true;
-    } else {
-      // Invalid regex: fall back to substring match (case-insensitive).
-      if (lowered === null) lowered = haystack.toLowerCase();
-      if (lowered.includes(patterns[i]!.toLowerCase())) return true;
-    }
+  for (const rx of compiled) {
+    if (rx.test(haystack)) return true;
   }
   return false;
 }
