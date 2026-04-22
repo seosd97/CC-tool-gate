@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
-import { gunzipSync } from "node:zlib";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createJsonlSink, listPendingGz } from "../../src/adapters/jsonl";
+import { createJsonlSink } from "../../src/adapters/jsonl";
 import type { AuditRecord } from "../../src/core/types";
 
 const rec = (over: Partial<AuditRecord> = {}): AuditRecord => ({
@@ -32,85 +31,56 @@ describe("jsonl sink", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  test("appends JSONL lines", async () => {
-    const sink = createJsonlSink({ logsDir: dir, maxBytes: 1_000_000, maxAgeMs: 60_000 });
+  test("appends JSONL lines to today's file", async () => {
+    const sink = createJsonlSink({
+      logsDir: dir,
+      now: () => new Date(Date.UTC(2026, 3, 22, 10, 0, 0)),
+    });
     await sink.write(rec());
     await sink.write(rec({ tool_name: "Read" }));
-    const text = await readFile(join(dir, "current.jsonl"), "utf8");
+    const text = await readFile(join(dir, "audit-2026-04-22.jsonl"), "utf8");
     const lines = text.trim().split("\n");
     expect(lines).toHaveLength(2);
     expect(JSON.parse(lines[0]!).tool_name).toBe("Bash");
     expect(JSON.parse(lines[1]!).tool_name).toBe("Read");
   });
 
-  test("rotates by size and gzips into pending/", async () => {
-    const sink = createJsonlSink({ logsDir: dir, maxBytes: 50, maxAgeMs: 60_000 });
-    for (let i = 0; i < 5; i++) {
-      await sink.write(rec({ session_id: `s${i}` }));
-    }
-    const pending = await listPendingGz(sink.pendingDir());
-    expect(pending.length).toBeGreaterThanOrEqual(1);
-    // Multiple writes can rotate within the same ms; file sort order is
-    // then decided by a random suffix, so inspect the union of all gz
-    // contents rather than indexing by position.
-    const decoded = (
-      await Promise.all(
-        pending.map(async (p) =>
-          gunzipSync(new Uint8Array(await Bun.file(p).arrayBuffer())).toString(),
-        ),
-      )
-    ).join("");
-    expect(decoded).toContain('"session_id":"s0"');
+  test("rotates by UTC date", async () => {
+    let d = new Date(Date.UTC(2026, 3, 22, 23, 59, 0));
+    const sink = createJsonlSink({ logsDir: dir, now: () => d });
+    await sink.write(rec({ session_id: "a" }));
+    d = new Date(Date.UTC(2026, 3, 23, 0, 1, 0));
+    await sink.write(rec({ session_id: "b" }));
+
+    const entries = (await readdir(dir)).sort();
+    expect(entries).toEqual(["audit-2026-04-22.jsonl", "audit-2026-04-23.jsonl"]);
+
+    const day1 = await readFile(join(dir, "audit-2026-04-22.jsonl"), "utf8");
+    const day2 = await readFile(join(dir, "audit-2026-04-23.jsonl"), "utf8");
+    expect(day1).toContain('"session_id":"a"');
+    expect(day2).toContain('"session_id":"b"');
   });
 
-  test("rotateNow returns null when current is empty", async () => {
-    const sink = createJsonlSink({ logsDir: dir });
-    const out = await sink.rotateNow();
-    expect(out).toBeNull();
-  });
-
-  test("rotates by age", async () => {
-    let t = 1000;
+  test("concurrent writes serialize without losing or interleaving lines", async () => {
     const sink = createJsonlSink({
       logsDir: dir,
-      maxBytes: 1_000_000,
-      maxAgeMs: 100,
-      now: () => t,
+      now: () => new Date(Date.UTC(2026, 3, 22)),
     });
-    await sink.write(rec());
-    t += 200;
-    await sink.write(rec()); // triggers age-based rotation
-    const pending = await listPendingGz(sink.pendingDir());
-    expect(pending.length).toBeGreaterThanOrEqual(1);
+    await Promise.all(
+      Array.from({ length: 40 }, (_, i) => sink.write(rec({ session_id: `s${i}` }))),
+    );
+    const text = await readFile(join(dir, "audit-2026-04-22.jsonl"), "utf8");
+    const lines = text.trim().split("\n");
+    expect(lines).toHaveLength(40);
+    const seen = new Set(lines.map((l) => JSON.parse(l).session_id));
+    for (let i = 0; i < 40; i++) expect(seen.has(`s${i}`)).toBe(true);
   });
 
-  test("concurrent writes and rotateNow do not crash or lose data", async () => {
-    // Regression: before serialization, external rotateNow racing with
-    // append-triggered rotation produced ENOENT rename rejections and
-    // swallowed audit lines. After serializing through the writeChain,
-    // every line should survive somewhere on disk.
-    const sink = createJsonlSink({ logsDir: dir, maxBytes: 200, maxAgeMs: 60_000 });
-
-    const writes: Promise<unknown>[] = [];
-    const rotations: Promise<unknown>[] = [];
-    for (let i = 0; i < 40; i++) {
-      writes.push(sink.write(rec({ session_id: `s${i}` })));
-      if (i % 5 === 0) rotations.push(sink.rotateNow());
-    }
-    await Promise.all([...writes, ...rotations]);
-    // one more forced rotation to flush anything still in current.jsonl
-    await sink.rotateNow();
-
-    const pending = await listPendingGz(sink.pendingDir());
-    const decoded = (
-      await Promise.all(
-        pending.map(async (p) =>
-          gunzipSync(new Uint8Array(await Bun.file(p).arrayBuffer())).toString(),
-        ),
-      )
-    ).join("");
-    for (let i = 0; i < 40; i++) {
-      expect(decoded).toContain(`"session_id":"s${i}"`);
-    }
+  test("currentPath reflects the logging clock", () => {
+    const sink = createJsonlSink({
+      logsDir: dir,
+      now: () => new Date(Date.UTC(2026, 0, 1)),
+    });
+    expect(sink.currentPath()).toBe(join(dir, "audit-2026-01-01.jsonl"));
   });
 });

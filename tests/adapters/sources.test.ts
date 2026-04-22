@@ -57,17 +57,10 @@ describe("file source", () => {
   });
 });
 
-describe("inline source", () => {
-  test("decodes base64 markdown", async () => {
-    const b64 = Buffer.from(POLICY_MD).toString("base64");
-    const src = createSourceProvider(`inline:${b64}`);
-    const { policies } = await src.load();
-    expect(policies[0]!.name).toBe("env-files");
-  });
-});
-
 describe("createSourceProvider", () => {
-  test("rejects unknown schemes", () => {
+  test("rejects non-file schemes", () => {
+    expect(() => createSourceProvider("https://example.com/")).toThrow(/only file:\/\//);
+    expect(() => createSourceProvider("inline:abcd")).toThrow(/only file:\/\//);
     expect(() => createSourceProvider("ftp://example.com/")).toThrow();
   });
 });
