@@ -1,11 +1,5 @@
-type Level = "info" | "warn" | "error";
+import pino from "pino";
 
-function format(level: Level, msg: string, meta?: Record<string, unknown>): string {
-  return JSON.stringify({ ts: new Date().toISOString(), level, msg, ...meta });
-}
-
-export const log = {
-  info: (msg: string, meta?: Record<string, unknown>) => console.log(format("info", msg, meta)),
-  warn: (msg: string, meta?: Record<string, unknown>) => console.warn(format("warn", msg, meta)),
-  error: (msg: string, meta?: Record<string, unknown>) => console.error(format("error", msg, meta)),
-};
+export const log = pino({
+  level: process.env.LOG_LEVEL ?? "info",
+});

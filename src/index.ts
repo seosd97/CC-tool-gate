@@ -10,9 +10,10 @@ let cfg: AppConfig;
 try {
   cfg = loadConfig();
 } catch (err) {
-  log.error("Failed to load configuration", {
-    error: err instanceof Error ? err.message : String(err),
-  });
+  log.error(
+    { error: err instanceof Error ? err.message : String(err) },
+    "Failed to load configuration",
+  );
   process.exit(1);
 }
 
@@ -46,16 +47,16 @@ const app = createApp({
 });
 
 const policyCount = store.snapshot().policies.length;
-log.info("cc-tool-gate started", { host: cfg.HOST, port: cfg.PORT, policies: policyCount });
+log.info({ host: cfg.HOST, port: cfg.PORT, policies: policyCount }, "cc-tool-gate started");
 if (policyCount === 0) {
-  log.warn("No policies loaded", { sources: cfg.POLICY_SOURCES });
+  log.warn({ sources: cfg.POLICY_SOURCES }, "No policies loaded");
 }
 
 let shuttingDown = false;
 const shutdown = async (signal: string): Promise<void> => {
   if (shuttingDown) return;
   shuttingDown = true;
-  log.info("Shutting down", { signal });
+  log.info({ signal }, "Shutting down");
   try {
     await sink.flush?.();
   } catch {

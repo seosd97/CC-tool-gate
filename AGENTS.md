@@ -59,6 +59,7 @@ bun run dev
 | `LOGS_DIR` | No | `./logs` | Audit log directory |
 | `CACHE_TTL_MS` | No | `300000` | Cache TTL |
 | `CACHE_MAX` | No | `2000` | Max cache entries |
+| `LOG_LEVEL` | No | `info` | Pino log level (`trace`/`debug`/`info`/`warn`/`error`/`fatal`) |
 
 ## Policy file format
 

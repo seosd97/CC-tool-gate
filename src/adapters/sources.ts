@@ -29,7 +29,7 @@ export async function loadPoliciesFromDir(
     entries = await readdir(dir);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    log.warn("Policy directory unreadable", { dir, error: msg });
+    log.warn({ dir, error: msg }, "Policy directory unreadable");
     return { policies: [], rules };
   }
   for (const name of entries.sort()) {
@@ -43,11 +43,14 @@ export async function loadPoliciesFromDir(
         for (const w of warnings) {
           if (onWarn) onWarn(w);
           else
-            log.warn("Dropping invalid regex", {
-              context: w.context,
-              pattern: w.pattern,
-              error: w.error,
-            });
+            log.warn(
+              {
+                context: w.context,
+                pattern: w.pattern,
+                error: w.error,
+              },
+              "Dropping invalid regex",
+            );
         }
       }
       continue;
@@ -82,11 +85,14 @@ export function createPolicyStore(dirs: string[]): PolicyStore {
       for (const dir of dirs) {
         try {
           const { policies: ps, rules: r } = await loadPoliciesFromDir(dir, (w) => {
-            log.warn("Dropping invalid regex", {
-              context: w.context,
-              pattern: w.pattern,
-              error: w.error,
-            });
+            log.warn(
+              {
+                context: w.context,
+                pattern: w.pattern,
+                error: w.error,
+              },
+              "Dropping invalid regex",
+            );
           });
           allPolicies.push(...ps);
           if (r) nextRules = r;
