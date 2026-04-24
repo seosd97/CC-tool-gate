@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import type { AuditRecord, AuditSink, DecisionCache, DecisionResult, LlmJudge } from "@/core/gate";
 import { createGate, makeCacheKey } from "@/core/gate";
-import type { Policy, PreToolUseRequest, StaticRules } from "@/core/policy";
+import type { CompiledStaticRules, Policy, PreToolUseRequest } from "@/core/policy";
 
 function fakeCache(): DecisionCache {
   const store = new Map<string, DecisionResult>();
@@ -27,7 +27,7 @@ function fakeLlm(impl: LlmJudge["judge"]): LlmJudge {
   return { judge: impl };
 }
 
-const emptyRules: StaticRules = {
+const emptyRules: CompiledStaticRules = {
   deny: { tool_names: [], patterns: [] },
   allow: { tool_names: [], patterns: [] },
 };
@@ -80,7 +80,7 @@ describe("gate", () => {
       sink,
       getSnapshot: () => ({
         policies: [policy()],
-        rules: { ...emptyRules, deny: { tool_names: [], patterns: ["rm -rf"] } },
+        rules: { ...emptyRules, deny: { tool_names: [], patterns: [/rm -rf/i] } },
       }),
     });
     const r = await gate.decide(req({ tool_input: { command: "rm -rf /" } }));
@@ -131,7 +131,7 @@ describe("gate", () => {
       sink,
       getSnapshot: () => ({
         policies: [policy()],
-        rules: { ...emptyRules, allow: { tool_names: [], patterns: ["^echo "] } },
+        rules: { ...emptyRules, allow: { tool_names: [], patterns: [/^echo /i] } },
       }),
     });
     const r = await gate.decide(req({ tool_input: { command: "echo hello" } }));

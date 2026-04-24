@@ -1,4 +1,9 @@
-import type { PermissionDecision, Policy, PreToolUseRequest, StaticRules } from "@/core/policy";
+import type {
+  CompiledStaticRules,
+  PermissionDecision,
+  Policy,
+  PreToolUseRequest,
+} from "@/core/policy";
 import { redact, redactString } from "@/core/redact";
 
 export interface DecisionResult {
@@ -45,7 +50,7 @@ export interface GateDeps {
   llm: LlmJudge;
   cache: DecisionCache;
   sink: AuditSink;
-  getSnapshot: () => { policies: Policy[]; rules: StaticRules };
+  getSnapshot: () => { policies: Policy[]; rules: CompiledStaticRules };
   now?: () => Date;
 }
 
@@ -68,12 +73,15 @@ function flattenToolInput(toolInput: Record<string, unknown>): string {
   return parts.join("\n");
 }
 
-function checkStaticRules(req: PreToolUseRequest, rules: StaticRules): DecisionResult | null {
+function checkStaticRules(
+  req: PreToolUseRequest,
+  rules: CompiledStaticRules,
+): DecisionResult | null {
   const haystack = flattenToolInput(req.tool_input);
 
   if (
     rules.deny.tool_names.includes(req.tool_name) ||
-    rules.deny.patterns.some((p) => new RegExp(p, "i").test(haystack))
+    rules.deny.patterns.some((rx) => rx.test(haystack))
   ) {
     return {
       decision: "deny",
@@ -85,7 +93,7 @@ function checkStaticRules(req: PreToolUseRequest, rules: StaticRules): DecisionR
 
   if (
     rules.allow.tool_names.includes(req.tool_name) ||
-    rules.allow.patterns.some((p) => new RegExp(p, "i").test(haystack))
+    rules.allow.patterns.some((rx) => rx.test(haystack))
   ) {
     return {
       decision: "allow",

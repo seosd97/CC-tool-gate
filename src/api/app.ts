@@ -2,14 +2,14 @@ import { Hono } from "hono";
 import { bearerAuth } from "hono/bearer-auth";
 import { bodyLimit } from "hono/body-limit";
 import { type AuditSink, createGate, type DecisionCache, type LlmJudge } from "@/core/gate";
-import { type Policy, PreToolUseRequest, type StaticRules } from "@/core/policy";
+import { type CompiledStaticRules, type Policy, PreToolUseRequest } from "@/core/policy";
 
 export interface AppDeps {
   authToken: string;
   llm: LlmJudge;
   cache: DecisionCache;
   sink: AuditSink;
-  getSnapshot: () => { policies: Policy[]; rules: StaticRules };
+  getSnapshot: () => { policies: Policy[]; rules: CompiledStaticRules };
   reload: () => Promise<void>;
 }
 

@@ -11,14 +11,14 @@ const v = (decision: DecisionResult["decision"]): DecisionResult => ({
 
 describe("memory cache", () => {
   test("get returns set value", () => {
-    const c = createMemoryCache(1000, 5);
+    const c = createMemoryCache({ ttlMs: 1000, maxEntries: 5 });
     c.set("k", v("allow"));
     expect(c.get("k")?.decision).toBe("allow");
   });
 
   test("expires after ttl", () => {
     let t = 0;
-    const c = createMemoryCache(100, 5, () => t);
+    const c = createMemoryCache({ ttlMs: 100, maxEntries: 5, now: () => t });
     c.set("k", v("deny"));
     t = 99;
     expect(c.get("k")?.decision).toBe("deny");
@@ -27,7 +27,7 @@ describe("memory cache", () => {
   });
 
   test("evicts least recently used", () => {
-    const c = createMemoryCache(10_000, 2);
+    const c = createMemoryCache({ ttlMs: 10_000, maxEntries: 2 });
     c.set("a", v("allow"));
     c.set("b", v("deny"));
     c.get("a");
@@ -39,7 +39,7 @@ describe("memory cache", () => {
   });
 
   test("clear drops all entries", () => {
-    const c = createMemoryCache(10_000, 5);
+    const c = createMemoryCache({ ttlMs: 10_000, maxEntries: 5 });
     c.set("a", v("allow"));
     c.set("b", v("deny"));
     expect(c.size()).toBe(2);

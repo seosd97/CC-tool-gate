@@ -32,7 +32,7 @@ async function main(): Promise<void> {
     return uri.replace(/^file:\/\//, "");
   });
 
-  const cache = createMemoryCache(cfg.CACHE_TTL_MS, cfg.CACHE_MAX);
+  const cache = createMemoryCache({ ttlMs: cfg.CACHE_TTL_MS, maxEntries: cfg.CACHE_MAX });
 
   const llm = createLlmJudge({
     apiKey: cfg.ANTHROPIC_API_KEY,

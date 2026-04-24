@@ -5,19 +5,21 @@ interface Entry {
   expiresAt: number;
 }
 
-export function createMemoryCache(
-  ttlMs: number,
-  maxEntries: number,
-  now?: () => number,
-): DecisionCache {
+export interface MemoryCacheOptions {
+  ttlMs: number;
+  maxEntries: number;
+  now?: () => number;
+}
+
+export function createMemoryCache(opts: MemoryCacheOptions): DecisionCache {
   const map = new Map<string, Entry>();
-  const _now = now ?? (() => Date.now());
+  const now = opts.now ?? (() => Date.now());
 
   return {
     get(key) {
       const entry = map.get(key);
       if (!entry) return undefined;
-      if (entry.expiresAt <= _now()) {
+      if (entry.expiresAt <= now()) {
         map.delete(key);
         return undefined;
       }
@@ -27,8 +29,8 @@ export function createMemoryCache(
     },
     set(key, value) {
       map.delete(key);
-      map.set(key, { value, expiresAt: _now() + ttlMs });
-      while (map.size > maxEntries) {
+      map.set(key, { value, expiresAt: now() + opts.ttlMs });
+      while (map.size > opts.maxEntries) {
         const oldest = map.keys().next().value as string | undefined;
         if (!oldest) break;
         map.delete(oldest);

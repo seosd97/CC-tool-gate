@@ -35,8 +35,8 @@ describe("loadPoliciesFromDir", () => {
     await writeFile(join(dir, "index.yaml"), INDEX_YAML);
     const { policies, rules } = await loadPoliciesFromDir(dir);
     expect(policies.map((p) => p.name)).toEqual(["env-files"]);
-    expect(rules?.deny.patterns).toEqual(["rm -rf"]);
-    expect(rules?.allow.patterns).toEqual(["^echo "]);
+    expect(rules?.deny.patterns.map((rx) => rx.source)).toEqual(["rm -rf"]);
+    expect(rules?.allow.patterns.map((rx) => rx.source)).toEqual(["^echo "]);
   });
 
   test("ignores non-md files and bad frontmatter", async () => {

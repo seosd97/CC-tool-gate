@@ -77,8 +77,9 @@ export function parseJsonDecision(text: string) {
   let raw: unknown;
   try {
     raw = JSON.parse(slice);
-  } catch (e) {
-    throw new Error(`LLM JSON parse failed: ${(e as Error).message}`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`LLM JSON parse failed: ${msg}`);
   }
   const parsed = LlmDecision.safeParse(raw);
   if (!parsed.success) {

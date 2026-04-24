@@ -55,7 +55,6 @@ Optional:
 | `LOGS_DIR` | `./logs` | Where to write JSONL audit logs. |
 | `CACHE_TTL_MS` | `300000` | Decision cache TTL. |
 | `CACHE_MAX` | `2000` | Max cached decisions. |
-| `RATE_LIMIT_PER_MIN` | `600` | Parsed but currently unused (reserved). |
 
 ## Policy sources
 

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const Schema = z.object({
+const ConfigSchema = z.object({
   PORT: z.coerce.number().int().positive().default(8787),
   /** Interface to bind. Defaults to loopback so the gate isn't accidentally
    * reachable from the LAN; set to 0.0.0.0 only if you really mean it. */
@@ -17,15 +17,12 @@ const Schema = z.object({
     .positive()
     .default(5 * 60_000),
   CACHE_MAX: z.coerce.number().int().positive().default(2_000),
-
-  /** Per-session rate limit; 0 disables rate limiting. */
-  RATE_LIMIT_PER_MIN: z.coerce.number().int().nonnegative().default(600),
 });
 
 export type AppConfig = ReturnType<typeof loadConfig>;
 
 export function loadConfig(env: Record<string, string | undefined> = process.env) {
-  const parsed = Schema.safeParse(env);
+  const parsed = ConfigSchema.safeParse(env);
   if (!parsed.success) {
     const issues = parsed.error.issues
       .map((i) => `  - ${i.path.join(".") || "(root)"}: ${i.message}`)

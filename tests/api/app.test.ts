@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { createApp } from "@/api/app";
 import type { AuditSink, DecisionCache, LlmJudge } from "@/core/gate";
-import type { Policy, StaticRules } from "@/core/policy";
+import type { CompiledStaticRules, Policy } from "@/core/policy";
 
 const TOKEN = "secret-token";
 
-const emptyRules: StaticRules = {
+const emptyRules: CompiledStaticRules = {
   deny: { tool_names: [], patterns: [] },
   allow: { tool_names: [], patterns: [] },
 };
@@ -14,7 +14,7 @@ function deps(
   over: {
     llm?: LlmJudge;
     policies?: Policy[];
-    rules?: StaticRules;
+    rules?: CompiledStaticRules;
     cache?: DecisionCache;
     sink?: AuditSink;
     reload?: () => Promise<void>;

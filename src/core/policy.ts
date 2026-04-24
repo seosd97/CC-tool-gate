@@ -45,15 +45,24 @@ export const StaticRules = z.object({
 });
 export type StaticRules = z.infer<typeof StaticRules>;
 
-function validatePatterns(patterns: readonly string[], context: string): string[] {
-  const out: string[] = [];
+export interface ValidationWarning {
+  context: string;
+  pattern: string;
+  error: string;
+}
+
+function validatePatterns(
+  patterns: readonly string[],
+  context: string,
+  warnings: ValidationWarning[],
+): RegExp[] {
+  const out: RegExp[] = [];
   for (const p of patterns) {
     try {
-      new RegExp(p, "i");
-      out.push(p);
+      out.push(new RegExp(p, "i"));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`${context}: dropping invalid regex ${JSON.stringify(p)} (${msg})`);
+      warnings.push({ context, pattern: p, error: msg });
     }
   }
   return out;
@@ -77,15 +86,29 @@ export function parsePolicy(source: string, raw: string): Policy | null {
   };
 }
 
-export function sanitizeStaticRules(rules: StaticRules, source: string): StaticRules {
+export interface CompiledRuleGroup {
+  tool_names: string[];
+  patterns: RegExp[];
+}
+
+export interface CompiledStaticRules {
+  deny: CompiledRuleGroup;
+  allow: CompiledRuleGroup;
+}
+
+export function sanitizeStaticRules(
+  rules: StaticRules,
+  source: string,
+  warnings: ValidationWarning[],
+): CompiledStaticRules {
   return {
     deny: {
       tool_names: rules.deny.tool_names,
-      patterns: validatePatterns(rules.deny.patterns, `${source} deny`),
+      patterns: validatePatterns(rules.deny.patterns, `${source} deny`, warnings),
     },
     allow: {
       tool_names: rules.allow.tool_names,
-      patterns: validatePatterns(rules.allow.patterns, `${source} allow`),
+      patterns: validatePatterns(rules.allow.patterns, `${source} allow`, warnings),
     },
   };
 }

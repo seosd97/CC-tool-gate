@@ -33,8 +33,8 @@ describe("loadConfig", () => {
     expect(cfg.CACHE_TTL_MS).toBe(12345);
   });
 
-  test("RATE_LIMIT_PER_MIN=0 is allowed (disables rate limiting)", () => {
-    const cfg = loadConfig({ ...baseEnv, RATE_LIMIT_PER_MIN: "0" });
-    expect(cfg.RATE_LIMIT_PER_MIN).toBe(0);
+  test("CACHE_MAX coerces from string", () => {
+    const cfg = loadConfig({ ...baseEnv, CACHE_MAX: "500" });
+    expect(cfg.CACHE_MAX).toBe(500);
   });
 });
