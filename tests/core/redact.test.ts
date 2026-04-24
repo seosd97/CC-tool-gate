@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { redact, redactString } from "../../src/core/redact";
+import { redact, redactString } from "@/core/redact";
 
-describe("redactString default rules", () => {
+describe("redactString", () => {
   test("scrubs Authorization Bearer header", () => {
     const s = "Authorization: Bearer abc.def.ghi123";
     expect(redactString(s)).toBe("Authorization: Bearer [REDACTED]");
@@ -16,8 +16,6 @@ describe("redactString default rules", () => {
     expect(redactString("api_key=secret123")).toBe("api_key=[REDACTED]");
     expect(redactString("apiKey: secret123")).toBe("apiKey: [REDACTED]");
     expect(redactString("access-token=abcdef")).toBe("access-token=[REDACTED]");
-    // The optional opening quote is consumed by the match; only the trailing
-    // quote is left behind.
     expect(redactString('secret_access_key="xyz"')).toBe('secret_access_key=[REDACTED]"');
   });
 
@@ -58,7 +56,6 @@ describe("redact (recursive)", () => {
     expect(out.tool_input.env[0]).toBe("api_key=[REDACTED]");
     expect(out.tool_input.env[1]).toBe("USER=me");
     expect(out.tool_input.nested.body).toBe("password=[REDACTED]");
-    // non-string leaves pass through
     expect(out.tool_input.nested.safe).toBe(42);
   });
 
@@ -88,8 +85,6 @@ describe("redact (recursive)", () => {
     expect(out.nested.user).toBe("me");
     expect(out.arr[0].token).toBe("[REDACTED]");
     expect(out.arr[1].safe).toBe("ok");
-    // Exact key match only — "numeric_token" normalizes to "numerictoken",
-    // which is not in the sensitive set.
     expect(out.numeric_token).toBe(12345);
   });
 
@@ -98,12 +93,5 @@ describe("redact (recursive)", () => {
     expect(out.command).toBe("ls");
     expect(out.path).toBe("/tmp");
     expect(out.user).toBe("me");
-  });
-
-  test("accepts custom rules and overrides defaults", () => {
-    const rules = [{ pattern: /foo/g, replacement: "BAR" }];
-    expect(redactString("foo baz AKIAIOSFODNN7EXAMPLE", rules)).toBe(
-      "BAR baz AKIAIOSFODNN7EXAMPLE",
-    );
   });
 });

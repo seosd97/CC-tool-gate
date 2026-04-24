@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { loadConfig } from "../src/config";
+import { loadConfig } from "@/config";
 
 const baseEnv = {
   AUTH_TOKEN: "tok",

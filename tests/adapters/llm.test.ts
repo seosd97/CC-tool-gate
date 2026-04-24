@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { createLlmJudge, parseJsonDecision } from "../../src/adapters/llm";
-import type { Policy, PreToolUseRequest } from "../../src/core/types";
+import { createLlmJudge, parseJsonDecision } from "@/adapters/llm";
+import type { Policy, PreToolUseRequest } from "@/core/policy";
 
 describe("parseJsonDecision", () => {
   test("parses bare JSON", () => {
@@ -58,7 +58,6 @@ describe("createLlmJudge", () => {
       {
         name: "destructive",
         description: "no rm -rf",
-        triggers: { tool_names: ["Bash"], patterns: ["rm -rf"] },
         default_decision: "deny",
         body: "deny rm -rf",
         source: "x",

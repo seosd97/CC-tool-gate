@@ -6,18 +6,18 @@ This file contains context for AI agents working on `cc-tool-gate`.
 
 `cc-tool-gate` is a small Bun/TypeScript HTTP server that acts as a **permission gate** for Claude Code's `PreToolUse` hook. When Claude Code is about to invoke a tool (e.g. `Bash`, `Edit`, `Write`), it sends an HTTP POST to this server. The server returns `allow`, `deny`, or `ask` based on:
 
-1. Hard rules in `index.yaml` (regex/tool-name based)
+1. Static rules in `index.yaml` (`deny`/`allow` lists by tool_name or regex pattern)
 2. An in-memory LRU+TTL cache of recent decisions
-3. Matched natural-language policies (markdown with frontmatter)
-4. An LLM judge (Anthropic) that sees the matched policies + tool call
-5. Fallback to the policy's `default_decision` if the LLM fails
+3. ALL loaded natural-language policies (markdown with frontmatter) are sent to the LLM
+4. An LLM judge (Anthropic) that sees every policy + the tool call
+5. Fallback to the first policy's `default_decision` if the LLM fails
 
 Every decision is logged to a daily-rotated JSONL file.
 
 ## Architecture rules
 
 - **`core/`** — pure domain logic, no I/O. Must not import from `adapters/` or `api/`.
-- **`adapters/`** — implementations of `core/types` interfaces. May import `core/types` only.
+- **`adapters/`** — implementations of `core` interfaces. May import `core/` only.
 - **`api/`** — Hono HTTP layer. May import `core/` and `adapters/`.
 - **`main.ts`** — composition root: reads env, wires dependencies, starts `Bun.serve`.
 
@@ -59,7 +59,7 @@ bun run dev
 | `LOGS_DIR` | No | `./logs` | Audit log directory |
 | `CACHE_TTL_MS` | No | `300000` | Cache TTL |
 | `CACHE_MAX` | No | `2000` | Max cache entries |
-| `RATE_LIMIT_PER_MIN` | No | `600` | Global rate limit (0 = off) |
+| `RATE_LIMIT_PER_MIN` | No | `600` | Parsed but currently unused (reserved) |
 
 ## Policy file format
 
@@ -69,9 +69,6 @@ Policies are markdown files with YAML frontmatter:
 ---
 name: env-files
 description: Protect .env files
-triggers:
-  tool_names: ["Bash", "Read"]
-  patterns: ["\\.env"]
 default_decision: deny
 ---
 
@@ -80,13 +77,11 @@ default_decision: deny
 Natural-language instructions about what to allow/deny/ask.
 ```
 
-- `triggers` with empty `tool_names` and `patterns` are ignored (no accidental catch-alls).
-- Invalid regex in `patterns` is dropped at load time with a warning.
-- `index.yaml` in the same directory defines `hard_deny` and `hard_allow` rules.
+- ALL loaded policies are sent to the LLM for every request (no trigger matching).
+- `index.yaml` in the same directory defines `deny` and `allow` static rules.
 
 ## Key conventions
 
 - **Zod** is used at every boundary: env vars, HTTP body, frontmatter, LLM response.
-- **Structured logging** via `core/logger.ts` — JSON lines with `ts`, `level`, `msg`, and optional `meta`.
 - **Graceful shutdown**: `SIGTERM`/`SIGINT` → stop server → flush pending audit writes → exit.
 - **Biome** handles linting, formatting, and import sorting. Do not add ESLint or Prettier.

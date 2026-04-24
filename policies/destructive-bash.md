@@ -1,24 +1,12 @@
 ---
 name: destructive-bash
 description: Stop bash commands that delete data, format disks, or rewrite git history.
-triggers:
-  tool_names: ["Bash"]
-  patterns:
-    - "\\brm\\s+-[rRf]"
-    - "\\bfind\\b.*-delete"
-    - "\\bxargs\\b.*\\brm\\b"
-    - "\\bgit\\s+reset\\s+--hard"
-    - "\\bgit\\s+clean\\s+-[fdx]"
-    - "\\bgit\\s+push\\s+(-f|--force)"
-    - "\\bgit\\s+branch\\s+-D"
-    - "\\btruncate\\s+-s\\s*0"
-    - "\\bsudo\\b"
 default_decision: ask
 ---
 
 # Destructive bash policy
 
-These commands can lose user work. The pipeline already hard-denies
+These commands can lose user work. The static rules already deny
 `rm -rf /` and similar; this policy covers the broader class.
 
 ## deny

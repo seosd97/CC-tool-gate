@@ -1,19 +1,20 @@
 import { describe, expect, test } from "bun:test";
-import { createApp } from "../../src/api/app";
-import type { AuditSink, DecisionCache, IndexConfig, LlmJudge, Policy } from "../../src/core/types";
+import { createApp } from "@/api/app";
+import type { AuditSink, DecisionCache, LlmJudge } from "@/core/gate";
+import type { Policy, StaticRules } from "@/core/policy";
 
 const TOKEN = "secret-token";
 
-const baseIndex: IndexConfig = {
-  hard_deny: { tool_names: [], patterns: [] },
-  hard_allow: { tool_names: [], patterns: [] },
+const emptyRules: StaticRules = {
+  deny: { tool_names: [], patterns: [] },
+  allow: { tool_names: [], patterns: [] },
 };
 
 function deps(
   over: {
     llm?: LlmJudge;
     policies?: Policy[];
-    index?: IndexConfig;
+    rules?: StaticRules;
     cache?: DecisionCache;
     sink?: AuditSink;
     reload?: () => Promise<void>;
@@ -37,7 +38,7 @@ function deps(
     },
     cache,
     sink,
-    getSnapshot: () => ({ policies: over.policies ?? [], index: over.index ?? baseIndex }),
+    getSnapshot: () => ({ policies: over.policies ?? [], rules: over.rules ?? emptyRules }),
     reload: over.reload ?? (async () => {}),
   };
 }
@@ -77,7 +78,6 @@ describe("api app", () => {
           {
             name: "p",
             description: "",
-            triggers: { tool_names: ["Bash"], patterns: [".*"] },
             default_decision: "ask",
             body: "",
             source: "x",

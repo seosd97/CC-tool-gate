@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createJsonlSink } from "../../src/adapters/jsonl";
-import type { AuditRecord } from "../../src/core/types";
+import { createJsonlSink } from "@/adapters/audit-log";
+import type { AuditRecord } from "@/core/gate";
 
 const rec = (over: Partial<AuditRecord> = {}): AuditRecord => ({
   ts: new Date(0).toISOString(),

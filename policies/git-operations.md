@@ -1,17 +1,6 @@
 ---
 name: git-operations
 description: Guardrails for risky git operations beyond plain destructive commands.
-triggers:
-  tool_names: ["Bash"]
-  patterns:
-    - "\\bgit\\s+config\\b"
-    - "\\bgit\\s+commit\\s+--amend"
-    - "\\bgit\\s+rebase\\b"
-    - "\\bgit\\s+filter-(branch|repo)\\b"
-    - "\\bgit\\s+push\\b"
-    - "\\bgit\\s+remote\\s+(add|set-url)"
-    - "--no-verify"
-    - "--no-gpg-sign"
 default_decision: ask
 ---
 

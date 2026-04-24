@@ -1,38 +1,25 @@
 import { Hono } from "hono";
 import { bearerAuth } from "hono/bearer-auth";
 import { bodyLimit } from "hono/body-limit";
-import { createPipeline } from "../core/pipeline";
-import type { RateLimiter } from "../core/ratelimit";
-import type { RedactRule } from "../core/redact";
-import {
-  type AuditSink,
-  type DecisionCache,
-  type IndexConfig,
-  type LlmJudge,
-  type Policy,
-  PreToolUseRequest,
-} from "../core/types";
+import { type AuditSink, createGate, type DecisionCache, type LlmJudge } from "@/core/gate";
+import { type Policy, PreToolUseRequest, type StaticRules } from "@/core/policy";
 
 export interface AppDeps {
   authToken: string;
   llm: LlmJudge;
   cache: DecisionCache;
   sink: AuditSink;
-  getSnapshot: () => { policies: Policy[]; index: IndexConfig };
+  getSnapshot: () => { policies: Policy[]; rules: StaticRules };
   reload: () => Promise<void>;
-  redactRules?: readonly RedactRule[];
-  rateLimiter?: RateLimiter;
 }
 
 export function createApp(deps: AppDeps): Hono {
   const app = new Hono();
-  const pipeline = createPipeline({
+  const gate = createGate({
     llm: deps.llm,
     cache: deps.cache,
     sink: deps.sink,
     getSnapshot: deps.getSnapshot,
-    redactRules: deps.redactRules,
-    rateLimiter: deps.rateLimiter,
   });
 
   app.get("/health", (c) => c.json({ ok: true }));
@@ -60,7 +47,7 @@ export function createApp(deps: AppDeps): Hono {
         400,
       );
     }
-    const result = await pipeline.decide(parsed.data);
+    const result = await gate.decide(parsed.data);
     return c.json({
       hookSpecificOutput: {
         hookEventName: "PreToolUse",
@@ -72,8 +59,6 @@ export function createApp(deps: AppDeps): Hono {
 
   protectedRoutes.post("/admin/reload", async (c) => {
     await deps.reload();
-    // Policies may have changed — drop cached decisions so the next request
-    // is evaluated under the new rules instead of returning a stale verdict.
     deps.cache.clear();
     const snap = deps.getSnapshot();
     return c.json({ ok: true, policies: snap.policies.length });

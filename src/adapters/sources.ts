@@ -1,109 +1,71 @@
 import { readdir, readFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import type { Logger } from "../core/logger";
-import { mergePolicies, parsePolicy, validatePatterns } from "../core/policy";
-import { IndexConfig, type Policy, type SourceProvider } from "../core/types";
+import { type Policy, parsePolicy, StaticRules, sanitizeStaticRules } from "@/core/policy";
 
 const INDEX_FILES = new Set(["index.yaml", "index.yml"]);
 
-/** Drop invalid regexes from a parsed IndexConfig before handing it to the pipeline. */
-function sanitizeIndex(index: IndexConfig, source: string): IndexConfig {
-  return {
-    hard_deny: {
-      tool_names: index.hard_deny.tool_names,
-      patterns: validatePatterns(index.hard_deny.patterns, `${source} hard_deny`),
-    },
-    hard_allow: {
-      tool_names: index.hard_allow.tool_names,
-      patterns: validatePatterns(index.hard_allow.patterns, `${source} hard_allow`),
-    },
-  };
+export async function loadPoliciesFromDir(
+  dir: string,
+): Promise<{ policies: Policy[]; rules?: StaticRules }> {
+  const policies: Policy[] = [];
+  let rules: StaticRules | undefined;
+  let entries: string[];
+  try {
+    entries = await readdir(dir);
+  } catch (err) {
+    console.warn(
+      `Policy directory unreadable: ${dir}`,
+      err instanceof Error ? err.message : String(err),
+    );
+    return { policies: [], rules };
+  }
+  for (const name of entries.sort()) {
+    const full = join(dir, name);
+    if (INDEX_FILES.has(name)) {
+      const raw = await readFile(full, "utf8");
+      const parsed = StaticRules.safeParse(parseYaml(raw));
+      if (parsed.success) rules = sanitizeStaticRules(parsed.data, full);
+      continue;
+    }
+    if (extname(name).toLowerCase() !== ".md") continue;
+    const raw = await readFile(full, "utf8");
+    const policy = parsePolicy(full, raw);
+    if (policy) policies.push(policy);
+  }
+  return { policies, rules };
 }
 
-/**
- * Only `file://` is supported. Remote (https://) and base64 (inline:) sources
- * were dropped along with the upload pipeline — for a personal-use gate,
- * a directory checked into your deploy is the right shape.
- */
-export function createSourceProvider(uri: string, logger?: Logger): SourceProvider {
-  if (uri.startsWith("file://")) return fileSource(uri, logger);
-  throw new Error(`Unsupported POLICY_SOURCES scheme: ${uri} (only file:// is supported)`);
-}
-
-function fileSource(uri: string, logger?: Logger): SourceProvider {
-  const dir = uri.replace(/^file:\/\//, "");
-  return {
-    uri,
-    async load() {
-      const policies: Policy[] = [];
-      let index: IndexConfig | undefined;
-      let entries: string[];
-      try {
-        entries = await readdir(dir);
-      } catch (err) {
-        logger?.warn("Policy source unreadable", {
-          uri,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        return { policies: [], index };
-      }
-      for (const name of entries.sort()) {
-        const full = join(dir, name);
-        if (INDEX_FILES.has(name)) {
-          const raw = await readFile(full, "utf8");
-          const parsed = IndexConfig.safeParse(parseYaml(raw));
-          if (parsed.success) index = sanitizeIndex(parsed.data, `${uri}#${name}`);
-          continue;
-        }
-        if (extname(name).toLowerCase() !== ".md") continue;
-        const raw = await readFile(full, "utf8");
-        const policy = parsePolicy(`${uri}#${name}`, raw);
-        if (policy) policies.push(policy);
-      }
-      return { policies, index };
-    },
-  };
-}
-
-export interface PolicyRegistry {
-  /** Atomic snapshot for the pipeline. */
-  snapshot(): { policies: Policy[]; index: IndexConfig };
-  /** Reload all sources now. */
+export interface PolicyStore {
+  snapshot(): { policies: Policy[]; rules: StaticRules };
   reload(): Promise<void>;
 }
 
-export interface RegistryOptions {
-  sources: SourceProvider[];
-}
-
-const EMPTY_INDEX: IndexConfig = {
-  hard_deny: { tool_names: [], patterns: [] },
-  hard_allow: { tool_names: [], patterns: [] },
+const EMPTY_RULES: StaticRules = {
+  deny: { tool_names: [], patterns: [] },
+  allow: { tool_names: [], patterns: [] },
 };
 
-export function createPolicyRegistry(opts: RegistryOptions): PolicyRegistry {
+export function createPolicyStore(dirs: string[]): PolicyStore {
   let policies: Policy[] = [];
-  let index: IndexConfig = EMPTY_INDEX;
-
-  const reload = async (): Promise<void> => {
-    const layers: Policy[][] = [];
-    let nextIndex: IndexConfig | undefined;
-    for (const s of opts.sources) {
-      try {
-        const { policies: ps, index: ix } = await s.load();
-        layers.push(ps);
-        if (ix) nextIndex = ix; // later wins
-      } catch {
-        // keep last good for this source by skipping
-      }
-    }
-    policies = mergePolicies(layers);
-    if (nextIndex) index = nextIndex;
-  };
+  let rules: StaticRules = EMPTY_RULES;
 
   return {
-    snapshot: () => ({ policies, index }),
-    reload,
+    snapshot: () => ({ policies, rules }),
+    async reload() {
+      const allPolicies: Policy[] = [];
+      let nextRules: StaticRules | undefined;
+      for (const dir of dirs) {
+        try {
+          const { policies: ps, rules: r } = await loadPoliciesFromDir(dir);
+          allPolicies.push(...ps);
+          if (r) nextRules = r;
+        } catch {
+          // keep last good for this dir
+        }
+      }
+      policies = allPolicies;
+      if (nextRules) rules = nextRules;
+    },
   };
 }

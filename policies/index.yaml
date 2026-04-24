@@ -1,14 +1,14 @@
-# Hard rules evaluated before the LLM.
+# Static rules — evaluated before the LLM. No policy matching needed.
 #
-# - hard_deny: ALWAYS deny. The LLM is never consulted.
-# - hard_allow: ALWAYS allow. Use sparingly; this bypasses every policy.
+# - deny: ALWAYS deny. The LLM is never consulted.
+# - allow: ALWAYS allow. Use sparingly; this bypasses every policy.
 #
 # Each block accepts:
 #   tool_names: list of tool names that match
 #   patterns:   list of regex patterns matched (case-insensitive) against the
 #               flattened tool_input.
 
-hard_deny:
+deny:
   tool_names: []
   patterns:
     # Catastrophic shell commands. Block at the gate even if no policy fires.
@@ -19,6 +19,6 @@ hard_deny:
     - "dd\\s+if=.*of=/dev/(sd|nvme|disk)"
     - "shutdown\\s+(-h|now)"
 
-hard_allow:
+allow:
   tool_names: []
   patterns: []

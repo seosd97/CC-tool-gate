@@ -2,15 +2,11 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createPolicyRegistry, createSourceProvider } from "../../src/adapters/sources";
-import type { SourceProvider } from "../../src/core/types";
+import { createPolicyStore, loadPoliciesFromDir } from "@/adapters/sources";
 
 const POLICY_MD = `---
 name: env-files
 description: protect secrets
-triggers:
-  tool_names: ["Bash"]
-  patterns: ["\\\\.env"]
 default_decision: deny
 ---
 
@@ -18,14 +14,14 @@ body
 `;
 
 const INDEX_YAML = `
-hard_deny:
+deny:
   tool_names: ["BashWebSearch"]
   patterns: ["rm -rf"]
-hard_allow:
+allow:
   patterns: ["^echo "]
 `;
 
-describe("file source", () => {
+describe("loadPoliciesFromDir", () => {
   let dir: string;
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), "ccgate-src-"));
@@ -34,103 +30,68 @@ describe("file source", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  test("loads .md policies and index.yaml", async () => {
+  test("loads .md policies and static rules", async () => {
     await writeFile(join(dir, "env.md"), POLICY_MD);
     await writeFile(join(dir, "index.yaml"), INDEX_YAML);
-    const src = createSourceProvider(`file://${dir}`);
-    const { policies, index } = await src.load();
+    const { policies, rules } = await loadPoliciesFromDir(dir);
     expect(policies.map((p) => p.name)).toEqual(["env-files"]);
-    expect(index?.hard_deny.patterns).toEqual(["rm -rf"]);
-    expect(index?.hard_allow.patterns).toEqual(["^echo "]);
+    expect(rules?.deny.patterns).toEqual(["rm -rf"]);
+    expect(rules?.allow.patterns).toEqual(["^echo "]);
   });
 
   test("ignores non-md files and bad frontmatter", async () => {
     await writeFile(join(dir, "ok.md"), POLICY_MD);
     await writeFile(join(dir, "bad.md"), "no frontmatter here");
     await writeFile(join(dir, "ignored.txt"), "x");
-    const src = createSourceProvider(`file://${dir}`);
-    const { policies } = await src.load();
+    const { policies } = await loadPoliciesFromDir(dir);
     expect(policies.map((p) => p.name)).toEqual(["env-files"]);
   });
-});
 
-describe("createSourceProvider", () => {
-  test("rejects non-file schemes", () => {
-    expect(() => createSourceProvider("https://example.com/")).toThrow(/only file:\/\//);
-    expect(() => createSourceProvider("inline:abcd")).toThrow(/only file:\/\//);
-    expect(() => createSourceProvider("ftp://example.com/")).toThrow();
+  test("returns empty on unreadable directory", async () => {
+    const { policies, rules } = await loadPoliciesFromDir("/nonexistent/path");
+    expect(policies).toEqual([]);
+    expect(rules).toBeUndefined();
   });
 });
 
-describe("policy registry", () => {
-  test("merges layers (later overrides earlier by name)", async () => {
-    const a: SourceProvider = {
-      uri: "a",
-      load: async () => ({
-        policies: [
-          {
-            name: "x",
-            description: "v1",
-            triggers: { tool_names: [], patterns: [] },
-            default_decision: "ask",
-            body: "",
-            source: "a",
-          },
-        ],
-      }),
-    };
-    const b: SourceProvider = {
-      uri: "b",
-      load: async () => ({
-        policies: [
-          {
-            name: "x",
-            description: "v2",
-            triggers: { tool_names: [], patterns: [] },
-            default_decision: "deny",
-            body: "",
-            source: "b",
-          },
-        ],
-        index: {
-          hard_deny: { tool_names: ["X"], patterns: [] },
-          hard_allow: { tool_names: [], patterns: [] },
-        },
-      }),
-    };
+describe("createPolicyStore", () => {
+  test("loads policies from multiple dirs", async () => {
+    const dir1 = await mkdtemp(join(tmpdir(), "ccgate-store1-"));
+    const dir2 = await mkdtemp(join(tmpdir(), "ccgate-store2-"));
+    try {
+      await writeFile(
+        join(dir1, "a.md"),
+        `---
+name: policy-a
+default_decision: allow
+---
 
-    const reg = createPolicyRegistry({ sources: [a, b] });
-    await reg.reload();
-    const snap = reg.snapshot();
-    expect(snap.policies).toHaveLength(1);
-    expect(snap.policies[0]?.description).toBe("v2");
-    expect(snap.index.hard_deny.tool_names).toEqual(["X"]);
+a
+`,
+      );
+      await writeFile(
+        join(dir2, "b.md"),
+        `---
+name: policy-b
+default_decision: deny
+---
+
+b
+`,
+      );
+      const store = createPolicyStore([dir1, dir2]);
+      await store.reload();
+      const snap = store.snapshot();
+      expect(snap.policies.map((p) => p.name).sort()).toEqual(["policy-a", "policy-b"]);
+    } finally {
+      await rm(dir1, { recursive: true, force: true });
+      await rm(dir2, { recursive: true, force: true });
+    }
   });
 
-  test("survives one source throwing", async () => {
-    const ok: SourceProvider = {
-      uri: "ok",
-      load: async () => ({
-        policies: [
-          {
-            name: "y",
-            description: "",
-            triggers: { tool_names: [], patterns: [] },
-            default_decision: "ask",
-            body: "",
-            source: "ok",
-          },
-        ],
-      }),
-    };
-    const broken: SourceProvider = {
-      uri: "broken",
-      load: async () => {
-        throw new Error("boom");
-      },
-    };
-    const reg = createPolicyRegistry({ sources: [broken, ok] });
-    await reg.reload();
-    expect(reg.snapshot().policies.map((p) => p.name)).toEqual(["y"]);
+  test("survives unreadable dir", async () => {
+    const store = createPolicyStore(["/nonexistent/path"]);
+    await store.reload();
+    expect(store.snapshot().policies).toEqual([]);
   });
 });

@@ -1,26 +1,14 @@
 ---
 name: env-files
 description: Protect .env files, credentials, and secret directories.
-triggers:
-  tool_names: ["Bash", "Edit", "Write", "Read", "MultiEdit"]
-  patterns:
-    - "(^|/)\\.env(\\.|$)"
-    - "(^|/)\\.envrc"
-    - "credentials(\\.|/)"
-    - "(^|/)secrets/"
-    - "id_rsa($|\\.)"
-    - "id_ed25519($|\\.)"
-    - "\\.pem$"
-    - "\\.p12$"
 default_decision: deny
 ---
 
 # Secret-file protection
 
 The agent must not read, write, edit, or print the contents of files that
-likely contain credentials. The trigger patterns above catch the common
-locations (`.env*`, `~/.aws/credentials`, `secrets/`, SSH private keys, PEM
-bundles).
+likely contain credentials. This covers `.env*`, `~/.aws/credentials`,
+`secrets/`, SSH private keys, PEM bundles.
 
 ## deny
 

@@ -1,14 +1,19 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { LlmDecision, type LlmJudge } from "../core/types";
+import { z } from "zod";
+import type { LlmJudge } from "@/core/gate";
+import { PermissionDecision } from "@/core/policy";
 
 export interface LlmJudgeOptions {
   apiKey: string;
   model: string;
-  /** Optional Anthropic client override (used by tests). */
   client?: Anthropic;
-  /** Per-call timeout in ms. */
   timeoutMs?: number;
 }
+
+const LlmDecision = z.object({
+  decision: PermissionDecision,
+  reason: z.string(),
+});
 
 const SYSTEM_PROMPT = `You are a safety gate for a developer agent. The agent is about to call a tool, and you must approve it.
 
@@ -61,8 +66,7 @@ function extractText(resp: Anthropic.Messages.Message): string {
   throw new Error("LLM returned no text content");
 }
 
-export function parseJsonDecision(text: string): LlmDecision {
-  // Tolerate code fences or surrounding prose by extracting the first {...} block.
+export function parseJsonDecision(text: string) {
   const trimmed = text.trim();
   const start = trimmed.indexOf("{");
   const end = trimmed.lastIndexOf("}");
