@@ -19,7 +19,7 @@ Every decision is logged to a daily-rotated JSONL file.
 - **`core/`** — pure domain logic, no I/O. Must not import from `adapters/` or `api/`.
 - **`adapters/`** — implementations of `core` interfaces. May import `core/` only.
 - **`api/`** — Hono HTTP layer. May import `core/` and `adapters/`.
-- **`main.ts`** — composition root: reads env, wires dependencies, starts `Bun.serve`.
+- **`index.ts`** — composition root: reads env, wires dependencies, exports Hono app for Bun.
 
 ## Build, test, and check commands
 

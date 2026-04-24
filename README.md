@@ -236,7 +236,7 @@ TLS in front of this service if it's not bound to localhost.
 
 ```
 src/
-  main.ts             composition root: env -> wire deps -> Bun.serve
+  index.ts            composition root: env -> wire deps -> export Hono app
   config.ts           env var parsing (zod)
   core/               domain logic (no IO)
     gate.ts           static rules -> cache -> LLM decision engine
@@ -254,4 +254,4 @@ policies/             default policy bundle + index.yaml
 ```
 
 `core/` does not import from `adapters/` or `api/`. `adapters/` imports
-only `core/`. `api/` imports `core/`. `main.ts` wires everything.
+only `core/`. `api/` imports `core/`. `index.ts` wires everything.
