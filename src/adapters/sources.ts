@@ -9,6 +9,7 @@ import {
   sanitizeStaticRules,
   type ValidationWarning,
 } from "@/core/policy";
+import { log } from "@/lib/logger";
 
 const INDEX_FILES = new Set(["index.yaml", "index.yml"]);
 
@@ -28,7 +29,7 @@ export async function loadPoliciesFromDir(
     entries = await readdir(dir);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.warn(`Policy directory unreadable: ${dir} ${msg}`);
+    log.warn("Policy directory unreadable", { dir, error: msg });
     return { policies: [], rules };
   }
   for (const name of entries.sort()) {
@@ -42,9 +43,11 @@ export async function loadPoliciesFromDir(
         for (const w of warnings) {
           if (onWarn) onWarn(w);
           else
-            console.warn(
-              `${w.context}: dropping invalid regex ${JSON.stringify(w.pattern)} (${w.error})`,
-            );
+            log.warn("Dropping invalid regex", {
+              context: w.context,
+              pattern: w.pattern,
+              error: w.error,
+            });
         }
       }
       continue;
@@ -79,9 +82,11 @@ export function createPolicyStore(dirs: string[]): PolicyStore {
       for (const dir of dirs) {
         try {
           const { policies: ps, rules: r } = await loadPoliciesFromDir(dir, (w) => {
-            console.warn(
-              `${w.context}: dropping invalid regex ${JSON.stringify(w.pattern)} (${w.error})`,
-            );
+            log.warn("Dropping invalid regex", {
+              context: w.context,
+              pattern: w.pattern,
+              error: w.error,
+            });
           });
           allPolicies.push(...ps);
           if (r) nextRules = r;

@@ -4,15 +4,7 @@ import { createPolicyStore } from "@/adapters/sources";
 import { createApp } from "@/api/app";
 import { type AppConfig, loadConfig } from "@/config";
 import { createMemoryCache } from "@/core/cache";
-
-const log = {
-  info: (msg: string, meta?: Record<string, unknown>) =>
-    console.log(JSON.stringify({ ts: new Date().toISOString(), level: "info", msg, ...meta })),
-  warn: (msg: string, meta?: Record<string, unknown>) =>
-    console.warn(JSON.stringify({ ts: new Date().toISOString(), level: "warn", msg, ...meta })),
-  error: (msg: string, meta?: Record<string, unknown>) =>
-    console.error(JSON.stringify({ ts: new Date().toISOString(), level: "error", msg, ...meta })),
-};
+import { log } from "@/lib/logger";
 
 let cfg: AppConfig;
 try {
