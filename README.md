@@ -58,6 +58,7 @@ Optional:
 | `CACHE_MAX` | `2000` | Max cached decisions. |
 | `MAX_BODY_BYTES` | `65536` | Max accepted HTTP request body size for `/v1/pretooluse`. |
 | `LOG_LEVEL` | `info` | Pino log level (`trace`/`debug`/`info`/`warn`/`error`/`fatal`). |
+| `LOG_PRETTY` | `auto` | `auto` = pretty if stdout is a TTY, JSON otherwise. `true`/`false` to force. |
 
 ## Policy sources
 

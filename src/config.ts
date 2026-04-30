@@ -26,6 +26,13 @@ const ConfigSchema = z.object({
     .default(64 * 1024),
 
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal"]).default("info"),
+  /**
+   * "auto" honors process.stdout.isTTY (pretty in a terminal, JSON when piped
+   * or running in a container). "true"/"false" force one or the other. Pretty
+   * formatting is decided at logger bootstrap and cannot be toggled at runtime
+   * because pino transports are fixed at instance creation.
+   */
+  LOG_PRETTY: z.enum(["auto", "true", "false"]).default("auto"),
 });
 
 export type AppConfig = ReturnType<typeof loadConfig>;

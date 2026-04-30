@@ -62,6 +62,7 @@ bun run dev
 | `CACHE_MAX` | No | `2000` | Max cache entries |
 | `MAX_BODY_BYTES` | No | `65536` | Max HTTP body bytes for `/v1/pretooluse` |
 | `LOG_LEVEL` | No | `info` | Pino log level (`trace`/`debug`/`info`/`warn`/`error`/`fatal`) |
+| `LOG_PRETTY` | No | `auto` | `auto`/`true`/`false` — pretty-print toggle (TTY auto-detect by default) |
 
 ## Policy file format
 
