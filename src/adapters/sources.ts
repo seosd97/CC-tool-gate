@@ -58,7 +58,11 @@ export async function loadPoliciesFromDir(
     if (extname(name).toLowerCase() !== ".md") continue;
     const raw = await readFile(full, "utf8");
     const policy = parsePolicy(full, raw);
-    if (policy) policies.push(policy);
+    if (policy) {
+      policies.push(policy);
+    } else {
+      log.warn({ file: full }, "Skipping policy with invalid frontmatter");
+    }
   }
   return { policies, rules };
 }
@@ -80,7 +84,9 @@ export function createPolicyStore(dirs: string[]): PolicyStore {
   return {
     snapshot: () => ({ policies, rules }),
     async reload() {
-      const allPolicies: Policy[] = [];
+      // Later sources override earlier sources by policy name. Use a Map
+      // keyed by name so a re-declared policy replaces the prior one.
+      const byName = new Map<string, Policy>();
       let nextRules: CompiledStaticRules | undefined;
       for (const dir of dirs) {
         try {
@@ -94,13 +100,18 @@ export function createPolicyStore(dirs: string[]): PolicyStore {
               "Dropping invalid regex",
             );
           });
-          allPolicies.push(...ps);
+          for (const p of ps) {
+            if (byName.has(p.name)) {
+              log.info({ name: p.name, source: p.source }, "Policy overridden by later source");
+            }
+            byName.set(p.name, p);
+          }
           if (r) nextRules = r;
         } catch {
           // keep last good for this dir
         }
       }
-      policies = allPolicies;
+      policies = Array.from(byName.values());
       if (nextRules) rules = nextRules;
     },
   };

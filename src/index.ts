@@ -4,7 +4,7 @@ import { createPolicyStore } from "@/adapters/sources";
 import { createApp } from "@/api/app";
 import { type AppConfig, loadConfig } from "@/config";
 import { createMemoryCache } from "@/core/cache";
-import { log } from "@/lib/logger";
+import { log, setLogLevel } from "@/lib/logger";
 
 let cfg: AppConfig;
 try {
@@ -16,6 +16,8 @@ try {
   );
   process.exit(1);
 }
+
+setLogLevel(cfg.LOG_LEVEL);
 
 const dirs = cfg.POLICY_SOURCES.map((uri) => {
   if (!uri.startsWith("file://")) {

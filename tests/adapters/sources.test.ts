@@ -94,4 +94,40 @@ b
     await store.reload();
     expect(store.snapshot().policies).toEqual([]);
   });
+
+  test("later sources override earlier sources by name", async () => {
+    const dir1 = await mkdtemp(join(tmpdir(), "ccgate-override1-"));
+    const dir2 = await mkdtemp(join(tmpdir(), "ccgate-override2-"));
+    try {
+      await writeFile(
+        join(dir1, "p.md"),
+        `---
+name: shared
+default_decision: allow
+---
+
+original
+`,
+      );
+      await writeFile(
+        join(dir2, "p.md"),
+        `---
+name: shared
+default_decision: deny
+---
+
+override
+`,
+      );
+      const store = createPolicyStore([dir1, dir2]);
+      await store.reload();
+      const snap = store.snapshot();
+      expect(snap.policies).toHaveLength(1);
+      expect(snap.policies[0]?.default_decision).toBe("deny");
+      expect(snap.policies[0]?.body).toBe("override");
+    } finally {
+      await rm(dir1, { recursive: true, force: true });
+      await rm(dir2, { recursive: true, force: true });
+    }
+  });
 });

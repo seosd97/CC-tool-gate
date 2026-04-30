@@ -17,6 +17,8 @@ const ConfigSchema = z.object({
     .positive()
     .default(5 * 60_000),
   CACHE_MAX: z.coerce.number().int().positive().default(2_000),
+
+  LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal"]).default("info"),
 });
 
 export type AppConfig = ReturnType<typeof loadConfig>;

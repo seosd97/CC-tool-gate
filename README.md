@@ -55,6 +55,7 @@ Optional:
 | `LOGS_DIR` | `./logs` | Where to write JSONL audit logs. |
 | `CACHE_TTL_MS` | `300000` | Decision cache TTL. |
 | `CACHE_MAX` | `2000` | Max cached decisions. |
+| `LOG_LEVEL` | `info` | Pino log level (`trace`/`debug`/`info`/`warn`/`error`/`fatal`). |
 
 ## Policy sources
 
