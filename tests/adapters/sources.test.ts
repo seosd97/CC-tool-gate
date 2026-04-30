@@ -130,10 +130,7 @@ default_decision: ask
 second
 `,
       );
-      const next = store.reload();
-      // After completion, a new call must NOT reuse the prior promise.
-      expect(next).not.toBe(Promise.resolve());
-      await next;
+      await store.reload();
       expect(
         store
           .snapshot()

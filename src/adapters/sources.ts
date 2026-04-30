@@ -83,8 +83,6 @@ export function createPolicyStore(dirs: string[]): PolicyStore {
   let inFlight: Promise<void> | null = null;
 
   const performReload = async (): Promise<void> => {
-    // Later sources override earlier sources by policy name. Use a Map
-    // keyed by name so a re-declared policy replaces the prior one.
     const byName = new Map<string, Policy>();
     let nextRules: CompiledStaticRules | undefined;
     for (const dir of dirs) {
@@ -106,9 +104,7 @@ export function createPolicyStore(dirs: string[]): PolicyStore {
           byName.set(p.name, p);
         }
         if (r) nextRules = r;
-      } catch {
-        // keep last good for this dir
-      }
+      } catch {}
     }
     policies = Array.from(byName.values());
     if (nextRules) rules = nextRules;
@@ -117,9 +113,6 @@ export function createPolicyStore(dirs: string[]): PolicyStore {
   return {
     snapshot: () => ({ policies, rules }),
     reload() {
-      // Coalesce concurrent callers onto a single in-flight reload so two
-      // /admin/reload requests don't interleave fs scans and clobber each
-      // other's snapshot.
       if (inFlight) return inFlight;
       inFlight = performReload().finally(() => {
         inFlight = null;

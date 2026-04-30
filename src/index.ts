@@ -63,7 +63,6 @@ const shutdown = async (signal: string): Promise<void> => {
   shuttingDown = true;
   log.info({ signal }, "Shutting down");
   try {
-    // Wait for in-flight requests to complete before draining the audit sink.
     await server.stop(true);
   } catch (err) {
     log.warn(
@@ -73,9 +72,7 @@ const shutdown = async (signal: string): Promise<void> => {
   }
   try {
     await sink.flush?.();
-  } catch {
-    // Best-effort flush
-  }
+  } catch {}
   log.info("Shutdown complete");
   process.exit(0);
 };

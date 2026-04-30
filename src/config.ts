@@ -2,8 +2,6 @@ import { z } from "zod";
 
 const ConfigSchema = z.object({
   PORT: z.coerce.number().int().positive().default(8787),
-  /** Interface to bind. Defaults to loopback so the gate isn't accidentally
-   * reachable from the LAN; set to 0.0.0.0 only if you really mean it. */
   HOST: z.string().default("127.0.0.1"),
   AUTH_TOKEN: z.string().min(1, "AUTH_TOKEN is required"),
   ANTHROPIC_API_KEY: z.string().min(1, "ANTHROPIC_API_KEY is required"),
@@ -26,22 +24,11 @@ const ConfigSchema = z.object({
     .default(64 * 1024),
 
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal"]).default("info"),
-  /**
-   * "auto" honors process.stdout.isTTY (pretty in a terminal, JSON when piped
-   * or running in a container). "true"/"false" force one or the other. Pretty
-   * formatting is decided at logger bootstrap and cannot be toggled at runtime
-   * because pino transports are fixed at instance creation.
-   */
   LOG_PRETTY: z.enum(["auto", "true", "false"]).default("auto"),
 });
 
 export type AppConfig = ReturnType<typeof loadConfig>;
 
-/**
- * Resolve a `file://` URI to a filesystem path. Accepts the standard form
- * (`file:///abs/path`, host empty or "localhost") and the legacy non-standard
- * `file://./relative` form that earlier versions of this project supported.
- */
 function fileUriToPath(uri: string): string {
   if (!uri.startsWith("file://")) {
     throw new Error(`Unsupported POLICY_SOURCES scheme: ${uri} (only file:// is supported)`);
@@ -51,9 +38,7 @@ function fileUriToPath(uri: string): string {
     if (u.host === "" || u.host === "localhost") {
       return decodeURIComponent(u.pathname);
     }
-  } catch {
-    // fall through to legacy strip
-  }
+  } catch {}
   return uri.slice("file://".length);
 }
 

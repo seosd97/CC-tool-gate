@@ -28,8 +28,6 @@ export function createApp(deps: AppDeps): Hono {
 
   app.notFound((c) => c.json({ error: "not found" }, 404));
   app.onError((err, c) => {
-    // Let middleware-thrown HTTPExceptions (e.g. 401 from bearerAuth, 413 from
-    // bodyLimit) carry their intended status through.
     if (err instanceof HTTPException) {
       return err.getResponse();
     }
