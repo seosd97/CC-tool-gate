@@ -1,8 +1,10 @@
 import { Hono } from "hono";
 import { bearerAuth } from "hono/bearer-auth";
 import { bodyLimit } from "hono/body-limit";
+import { HTTPException } from "hono/http-exception";
 import { type AuditSink, createGate, type DecisionCache, type LlmJudge } from "@/core/gate";
 import { type CompiledStaticRules, type Policy, PreToolUseRequest } from "@/core/policy";
+import { log } from "@/lib/logger";
 
 export interface AppDeps {
   authToken: string;
@@ -11,6 +13,7 @@ export interface AppDeps {
   sink: AuditSink;
   getSnapshot: () => { policies: Policy[]; rules: CompiledStaticRules };
   reload: () => Promise<void>;
+  maxBodyBytes?: number;
 }
 
 export function createApp(deps: AppDeps): Hono {
@@ -21,13 +24,28 @@ export function createApp(deps: AppDeps): Hono {
     sink: deps.sink,
     getSnapshot: deps.getSnapshot,
   });
+  const maxBodyBytes = deps.maxBodyBytes ?? 64 * 1024;
+
+  app.notFound((c) => c.json({ error: "not found" }, 404));
+  app.onError((err, c) => {
+    // Let middleware-thrown HTTPExceptions (e.g. 401 from bearerAuth, 413 from
+    // bodyLimit) carry their intended status through.
+    if (err instanceof HTTPException) {
+      return err.getResponse();
+    }
+    log.error(
+      { error: err instanceof Error ? err.message : String(err), path: c.req.path },
+      "Unhandled request error",
+    );
+    return c.json({ error: "internal error" }, 500);
+  });
 
   app.get("/health", (c) => c.json({ ok: true }));
 
   const protectedRoutes = new Hono();
   protectedRoutes.use("*", bearerAuth({ token: deps.authToken }));
 
-  protectedRoutes.post("/v1/pretooluse", bodyLimit({ maxSize: 64 * 1024 }), async (c) => {
+  protectedRoutes.post("/v1/pretooluse", bodyLimit({ maxSize: maxBodyBytes }), async (c) => {
     let body: unknown;
     try {
       body = await c.req.json();

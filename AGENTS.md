@@ -56,9 +56,11 @@ bun run dev
 | `PORT` | No | `8787` | HTTP port |
 | `HOST` | No | `127.0.0.1` | Bind interface |
 | `LLM_MODEL` | No | `claude-haiku-4-5` | Anthropic model |
+| `LLM_TIMEOUT_MS` | No | `15000` | LLM request timeout (ms) |
 | `LOGS_DIR` | No | `./logs` | Audit log directory |
 | `CACHE_TTL_MS` | No | `300000` | Cache TTL |
 | `CACHE_MAX` | No | `2000` | Max cache entries |
+| `MAX_BODY_BYTES` | No | `65536` | Max HTTP body bytes for `/v1/pretooluse` |
 | `LOG_LEVEL` | No | `info` | Pino log level (`trace`/`debug`/`info`/`warn`/`error`/`fatal`) |
 
 ## Policy file format

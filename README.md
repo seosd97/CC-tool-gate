@@ -52,9 +52,11 @@ Optional:
 | `PORT` | `8787` | HTTP port. |
 | `HOST` | `127.0.0.1` | Interface to bind. Loopback by default so the gate isn't reachable from the LAN; set to `0.0.0.0` only if you explicitly want it exposed. |
 | `LLM_MODEL` | `claude-haiku-4-5` | Anthropic model. |
+| `LLM_TIMEOUT_MS` | `15000` | LLM request timeout in milliseconds. |
 | `LOGS_DIR` | `./logs` | Where to write JSONL audit logs. |
 | `CACHE_TTL_MS` | `300000` | Decision cache TTL. |
 | `CACHE_MAX` | `2000` | Max cached decisions. |
+| `MAX_BODY_BYTES` | `65536` | Max accepted HTTP request body size for `/v1/pretooluse`. |
 | `LOG_LEVEL` | `info` | Pino log level (`trace`/`debug`/`info`/`warn`/`error`/`fatal`). |
 
 ## Policy sources

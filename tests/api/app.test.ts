@@ -139,6 +139,31 @@ describe("api app", () => {
     expect(body.ok).toBe(true);
   });
 
+  test("POST /v1/pretooluse rejects body over maxBodyBytes", async () => {
+    const app = createApp({ ...deps(), maxBodyBytes: 64 });
+    const big = { ...REQ_BODY, tool_input: { command: "x".repeat(200) } };
+    const body = JSON.stringify(big);
+    const res = await app.request("/v1/pretooluse", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "content-length": String(new TextEncoder().encode(body).length),
+        authorization: `Bearer ${TOKEN}`,
+      },
+      body,
+    });
+    expect(res.status).toBe(413);
+  });
+
+  test("unknown route returns 404 JSON when authenticated", async () => {
+    const app = createApp(deps());
+    const res = await app.request("/no-such-path", {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "not found" });
+  });
+
   test("POST /admin/reload clears the decision cache", async () => {
     let cleared = 0;
     const cache: DecisionCache = {

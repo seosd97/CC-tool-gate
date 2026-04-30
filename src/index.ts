@@ -19,24 +19,17 @@ try {
 
 setLogLevel(cfg.LOG_LEVEL);
 
-const dirs = cfg.POLICY_SOURCES.map((uri) => {
-  if (!uri.startsWith("file://")) {
-    throw new Error(`Unsupported POLICY_SOURCES scheme: ${uri} (only file:// is supported)`);
-  }
-  return uri.replace(/^file:\/\//, "");
-});
-
 const cache = createMemoryCache({ ttlMs: cfg.CACHE_TTL_MS, maxEntries: cfg.CACHE_MAX });
 
 const llm = createLlmJudge({
   apiKey: cfg.ANTHROPIC_API_KEY,
   model: cfg.LLM_MODEL,
-  timeoutMs: 15_000,
+  timeoutMs: cfg.LLM_TIMEOUT_MS,
 });
 
 const sink = createJsonlSink({ logsDir: cfg.LOGS_DIR });
 
-const store = createPolicyStore(dirs);
+const store = createPolicyStore(cfg.POLICY_SOURCES);
 await store.reload();
 
 const app = createApp({
@@ -46,10 +39,20 @@ const app = createApp({
   sink,
   getSnapshot: () => store.snapshot(),
   reload: () => store.reload(),
+  maxBodyBytes: cfg.MAX_BODY_BYTES,
+});
+
+const server = Bun.serve({
+  port: cfg.PORT,
+  hostname: cfg.HOST,
+  fetch: app.fetch,
 });
 
 const policyCount = store.snapshot().policies.length;
-log.info({ host: cfg.HOST, port: cfg.PORT, policies: policyCount }, "cc-tool-gate started");
+log.info(
+  { host: server.hostname, port: server.port, policies: policyCount },
+  "cc-tool-gate started",
+);
 if (policyCount === 0) {
   log.warn({ sources: cfg.POLICY_SOURCES }, "No policies loaded");
 }
@@ -59,6 +62,15 @@ const shutdown = async (signal: string): Promise<void> => {
   if (shuttingDown) return;
   shuttingDown = true;
   log.info({ signal }, "Shutting down");
+  try {
+    // Wait for in-flight requests to complete before draining the audit sink.
+    await server.stop(true);
+  } catch (err) {
+    log.warn(
+      { error: err instanceof Error ? err.message : String(err) },
+      "Server stop reported error",
+    );
+  }
   try {
     await sink.flush?.();
   } catch {
@@ -74,9 +86,3 @@ process.on("SIGTERM", () => {
 process.on("SIGINT", () => {
   shutdown("SIGINT").catch(() => process.exit(1));
 });
-
-export default {
-  port: cfg.PORT,
-  hostname: cfg.HOST,
-  fetch: app.fetch,
-};
