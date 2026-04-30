@@ -80,39 +80,51 @@ const EMPTY_RULES: CompiledStaticRules = {
 export function createPolicyStore(dirs: string[]): PolicyStore {
   let policies: Policy[] = [];
   let rules: CompiledStaticRules = EMPTY_RULES;
+  let inFlight: Promise<void> | null = null;
+
+  const performReload = async (): Promise<void> => {
+    // Later sources override earlier sources by policy name. Use a Map
+    // keyed by name so a re-declared policy replaces the prior one.
+    const byName = new Map<string, Policy>();
+    let nextRules: CompiledStaticRules | undefined;
+    for (const dir of dirs) {
+      try {
+        const { policies: ps, rules: r } = await loadPoliciesFromDir(dir, (w) => {
+          log.warn(
+            {
+              context: w.context,
+              pattern: w.pattern,
+              error: w.error,
+            },
+            "Dropping invalid regex",
+          );
+        });
+        for (const p of ps) {
+          if (byName.has(p.name)) {
+            log.info({ name: p.name, source: p.source }, "Policy overridden by later source");
+          }
+          byName.set(p.name, p);
+        }
+        if (r) nextRules = r;
+      } catch {
+        // keep last good for this dir
+      }
+    }
+    policies = Array.from(byName.values());
+    if (nextRules) rules = nextRules;
+  };
 
   return {
     snapshot: () => ({ policies, rules }),
-    async reload() {
-      // Later sources override earlier sources by policy name. Use a Map
-      // keyed by name so a re-declared policy replaces the prior one.
-      const byName = new Map<string, Policy>();
-      let nextRules: CompiledStaticRules | undefined;
-      for (const dir of dirs) {
-        try {
-          const { policies: ps, rules: r } = await loadPoliciesFromDir(dir, (w) => {
-            log.warn(
-              {
-                context: w.context,
-                pattern: w.pattern,
-                error: w.error,
-              },
-              "Dropping invalid regex",
-            );
-          });
-          for (const p of ps) {
-            if (byName.has(p.name)) {
-              log.info({ name: p.name, source: p.source }, "Policy overridden by later source");
-            }
-            byName.set(p.name, p);
-          }
-          if (r) nextRules = r;
-        } catch {
-          // keep last good for this dir
-        }
-      }
-      policies = Array.from(byName.values());
-      if (nextRules) rules = nextRules;
+    reload() {
+      // Coalesce concurrent callers onto a single in-flight reload so two
+      // /admin/reload requests don't interleave fs scans and clobber each
+      // other's snapshot.
+      if (inFlight) return inFlight;
+      inFlight = performReload().finally(() => {
+        inFlight = null;
+      });
+      return inFlight;
     },
   };
 }

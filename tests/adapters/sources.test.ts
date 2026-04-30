@@ -95,6 +95,56 @@ b
     expect(store.snapshot().policies).toEqual([]);
   });
 
+  test("concurrent reload calls share a single in-flight promise", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ccgate-coalesce-"));
+    try {
+      await writeFile(join(dir, "a.md"), POLICY_MD);
+      const store = createPolicyStore([dir]);
+      const p1 = store.reload();
+      const p2 = store.reload();
+      const p3 = store.reload();
+      expect(p1).toBe(p2);
+      expect(p2).toBe(p3);
+      await p1;
+      expect(store.snapshot().policies.map((p) => p.name)).toEqual(["env-files"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a fresh reload runs after the previous one completes", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "ccgate-fresh-"));
+    try {
+      await writeFile(join(dir, "a.md"), POLICY_MD);
+      const store = createPolicyStore([dir]);
+      await store.reload();
+      expect(store.snapshot().policies).toHaveLength(1);
+
+      await writeFile(
+        join(dir, "b.md"),
+        `---
+name: second
+default_decision: ask
+---
+
+second
+`,
+      );
+      const next = store.reload();
+      // After completion, a new call must NOT reuse the prior promise.
+      expect(next).not.toBe(Promise.resolve());
+      await next;
+      expect(
+        store
+          .snapshot()
+          .policies.map((p) => p.name)
+          .sort(),
+      ).toEqual(["env-files", "second"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("later sources override earlier sources by name", async () => {
     const dir1 = await mkdtemp(join(tmpdir(), "ccgate-override1-"));
     const dir2 = await mkdtemp(join(tmpdir(), "ccgate-override2-"));
