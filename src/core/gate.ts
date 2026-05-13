@@ -1,56 +1,19 @@
 import type {
-  CompiledStaticRules,
-  PermissionDecision,
-  Policy,
-  PreToolUseRequest,
-} from "@/core/policy";
-import { redact, redactString } from "@/core/redact";
-
-export interface DecisionResult {
-  decision: PermissionDecision;
-  reason: string;
-  source: "static_deny" | "static_allow" | "cache" | "llm" | "fallback";
-  matched_policies: string[];
-}
-
-export interface AuditRecord {
-  ts: string;
-  session_id: string;
-  cwd: string;
-  tool_name: string;
-  tool_input: Record<string, unknown>;
-  decision: PermissionDecision;
-  reason: string;
-  source: DecisionResult["source"];
-  matched_policies: string[];
-  cache_hit: boolean;
-  latency_ms: number;
-}
-
-export interface DecisionCache {
-  get(key: string): DecisionResult | undefined;
-  set(key: string, value: DecisionResult): void;
-  clear(): void;
-  size(): number;
-}
-
-export interface AuditSink {
-  write(record: AuditRecord): Promise<void>;
-  flush?(): Promise<void>;
-}
-
-export interface LlmJudge {
-  judge(input: { request: PreToolUseRequest; policies: Policy[] }): Promise<{
-    decision: PermissionDecision;
-    reason: string;
-  }>;
-}
+  AuditRecord,
+  AuditSink,
+  DecisionCache,
+  DecisionResult,
+  LlmJudge,
+} from "@/core/contracts";
+import type { CompiledStaticRules, PolicySnapshot, PreToolUseRequest } from "@/core/policy";
+import { getErrorMessage } from "@/lib/errors";
+import { redact, redactString } from "@/lib/redact";
 
 export interface GateDeps {
   llm: LlmJudge;
   cache: DecisionCache;
   sink: AuditSink;
-  getSnapshot: () => { policies: Policy[]; rules: CompiledStaticRules };
+  getSnapshot: () => PolicySnapshot;
   now?: () => Date;
 }
 
@@ -87,7 +50,7 @@ function checkStaticRules(
       decision: "deny",
       reason: "Matched static deny rule",
       source: "static_deny",
-      matched_policies: [],
+      matchedPolicies: [],
     };
   }
 
@@ -99,7 +62,7 @@ function checkStaticRules(
       decision: "allow",
       reason: "Matched static allow rule",
       source: "static_allow",
-      matched_policies: [],
+      matchedPolicies: [],
     };
   }
   return null;
@@ -132,7 +95,7 @@ export function createGate(deps: GateDeps) {
           decision: "allow",
           reason: "No policies loaded; defaulting to allow",
           source: "fallback",
-          matched_policies: [],
+          matchedPolicies: [],
         };
         await writeAudit(deps.sink, req, result, false, t0, now);
         return result;
@@ -145,17 +108,16 @@ export function createGate(deps: GateDeps) {
           decision: llmResult.decision,
           reason: llmResult.reason,
           source: "llm",
-          matched_policies: policies.map((p) => p.name),
+          matchedPolicies: policies.map((p) => p.name),
         };
         deps.cache.set(key, result);
       } catch (err) {
         const fallback = policies[0]?.default_decision ?? "ask";
-        const msg = err instanceof Error ? err.message : String(err);
         result = {
           decision: fallback,
-          reason: `LLM call failed (${msg}); using policy default_decision`,
+          reason: `LLM call failed (${getErrorMessage(err)}); using policy default_decision`,
           source: "fallback",
-          matched_policies: policies.map((p) => p.name),
+          matchedPolicies: policies.map((p) => p.name),
         };
       }
 
@@ -175,16 +137,16 @@ async function writeAudit(
 ): Promise<void> {
   const record: AuditRecord = {
     ts: now().toISOString(),
-    session_id: req.session_id,
+    sessionId: req.session_id,
     cwd: req.cwd,
-    tool_name: req.tool_name,
-    tool_input: redact(req.tool_input),
+    toolName: req.tool_name,
+    toolInput: redact(req.tool_input),
     decision: result.decision,
     reason: redactString(result.reason),
     source: result.source,
-    matched_policies: result.matched_policies,
-    cache_hit: cacheHit,
-    latency_ms: Math.round(performance.now() - t0),
+    matchedPolicies: result.matchedPolicies,
+    cacheHit,
+    latencyMs: Math.round(performance.now() - t0),
   };
   try {
     await sink.write(record);

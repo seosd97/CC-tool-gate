@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
-import type { LlmJudge } from "@/core/gate";
+import type { LlmJudge } from "@/core/contracts";
 import { PermissionDecision, type Policy, type PreToolUseRequest } from "@/core/policy";
 
 export interface LlmJudgeOptions {

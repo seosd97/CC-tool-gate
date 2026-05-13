@@ -1,5 +1,6 @@
 import matter from "gray-matter";
 import { z } from "zod";
+import { getErrorMessage } from "@/lib/errors";
 
 export const PermissionDecision = z.enum(["allow", "deny", "ask"]);
 export type PermissionDecision = z.infer<typeof PermissionDecision>;
@@ -61,8 +62,7 @@ function validatePatterns(
     try {
       out.push(new RegExp(p, "i"));
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      warnings.push({ context, pattern: p, error: msg });
+      warnings.push({ context, pattern: p, error: getErrorMessage(err) });
     }
   }
   return out;
@@ -96,7 +96,12 @@ export interface CompiledStaticRules {
   allow: CompiledRuleGroup;
 }
 
-export function sanitizeStaticRules(
+export interface PolicySnapshot {
+  policies: Policy[];
+  rules: CompiledStaticRules;
+}
+
+export function compileStaticRules(
   rules: StaticRules,
   source: string,
   warnings: ValidationWarning[],

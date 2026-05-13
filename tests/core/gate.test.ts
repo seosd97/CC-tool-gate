@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import type { AuditRecord, AuditSink, DecisionCache, DecisionResult, LlmJudge } from "@/core/gate";
+import type {
+  AuditRecord,
+  AuditSink,
+  DecisionCache,
+  DecisionResult,
+  LlmJudge,
+} from "@/core/contracts";
 import { createGate, makeCacheKey } from "@/core/gate";
 import type { CompiledStaticRules, Policy, PreToolUseRequest } from "@/core/policy";
 
@@ -87,7 +93,7 @@ describe("gate", () => {
     expect(r.decision).toBe("deny");
     expect(r.source).toBe("static_deny");
     expect(sink.records).toHaveLength(1);
-    expect(sink.records[0]?.cache_hit).toBe(false);
+    expect(sink.records[0]?.cacheHit).toBe(false);
   });
 
   test("static deny by tool_name short-circuits", async () => {
@@ -160,7 +166,7 @@ describe("gate", () => {
     expect(r2.decision).toBe("deny");
     expect(calls).toBe(1);
     expect(sink.records).toHaveLength(2);
-    expect(sink.records[1]?.cache_hit).toBe(true);
+    expect(sink.records[1]?.cacheHit).toBe(true);
   });
 
   test("falls back to policy default_decision when LLM throws", async () => {
@@ -193,7 +199,7 @@ describe("gate", () => {
     const r = await gate.decide(req());
     expect(r.decision).toBe("allow");
     expect(r.source).toBe("fallback");
-    expect(r.matched_policies).toEqual([]);
+    expect(r.matchedPolicies).toEqual([]);
   });
 
   test("audit records contain latency and timestamp", async () => {
@@ -208,8 +214,8 @@ describe("gate", () => {
     expect(sink.records).toHaveLength(1);
     const rec = sink.records[0]!;
     expect(rec.ts).toBe("2026-04-17T00:00:00.000Z");
-    expect(rec.latency_ms).toBeGreaterThanOrEqual(0);
-    expect(rec.matched_policies).toEqual(["default"]);
+    expect(rec.latencyMs).toBeGreaterThanOrEqual(0);
+    expect(rec.matchedPolicies).toEqual(["default"]);
   });
 
   test("audit records redact secrets in tool_input and reason", async () => {
@@ -230,7 +236,7 @@ describe("gate", () => {
       }),
     );
     const rec = sink.records[0]!;
-    const cmd = (rec.tool_input as { command: string }).command;
+    const cmd = (rec.toolInput as { command: string }).command;
     expect(cmd).toContain("Authorization: Bearer [REDACTED]");
     expect(cmd).not.toContain("tok.secret.xyz");
     expect(rec.reason).toContain("Authorization: Bearer [REDACTED]");
@@ -258,7 +264,7 @@ describe("gate", () => {
     const r = await gate.decide(req());
     expect(r.decision).toBe("deny");
     expect(r.source).toBe("llm");
-    expect(r.matched_policies).toEqual(["env-protect", "secrets-guard", "network-rule"]);
+    expect(r.matchedPolicies).toEqual(["env-protect", "secrets-guard", "network-rule"]);
     expect(receivedPolicies).toHaveLength(3);
     expect(receivedPolicies.map((p) => p.name)).toEqual([
       "env-protect",
@@ -285,7 +291,7 @@ describe("gate", () => {
     const r = await gate.decide(req());
     expect(r.decision).toBe("deny");
     expect(r.source).toBe("fallback");
-    expect(r.matched_policies).toEqual(["strict", "lenient"]);
+    expect(r.matchedPolicies).toEqual(["strict", "lenient"]);
   });
 
   test("fallback defaults to ask when no default_decision set", async () => {

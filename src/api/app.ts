@@ -2,8 +2,10 @@ import { Hono } from "hono";
 import { bearerAuth } from "hono/bearer-auth";
 import { bodyLimit } from "hono/body-limit";
 import { HTTPException } from "hono/http-exception";
-import { type AuditSink, createGate, type DecisionCache, type LlmJudge } from "@/core/gate";
-import { type CompiledStaticRules, type Policy, PreToolUseRequest } from "@/core/policy";
+import type { AuditSink, DecisionCache, LlmJudge } from "@/core/contracts";
+import { createGate } from "@/core/gate";
+import { type PolicySnapshot, PreToolUseRequest } from "@/core/policy";
+import { getErrorMessage } from "@/lib/errors";
 import { log } from "@/lib/logger";
 
 export interface AppDeps {
@@ -11,7 +13,7 @@ export interface AppDeps {
   llm: LlmJudge;
   cache: DecisionCache;
   sink: AuditSink;
-  getSnapshot: () => { policies: Policy[]; rules: CompiledStaticRules };
+  getSnapshot: () => PolicySnapshot;
   reload: () => Promise<void>;
   maxBodyBytes?: number;
 }
@@ -31,10 +33,7 @@ export function createApp(deps: AppDeps): Hono {
     if (err instanceof HTTPException) {
       return err.getResponse();
     }
-    log.error(
-      { error: err instanceof Error ? err.message : String(err), path: c.req.path },
-      "Unhandled request error",
-    );
+    log.error({ error: getErrorMessage(err), path: c.req.path }, "Unhandled request error");
     return c.json({ error: "internal error" }, 500);
   });
 

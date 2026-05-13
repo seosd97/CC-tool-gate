@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createApp } from "@/api/app";
-import type { AuditSink, DecisionCache, LlmJudge } from "@/core/gate";
+import type { AuditSink, DecisionCache, LlmJudge } from "@/core/contracts";
 import type { CompiledStaticRules, Policy } from "@/core/policy";
 
 const TOKEN = "secret-token";

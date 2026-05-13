@@ -1,4 +1,4 @@
-import type { DecisionCache, DecisionResult } from "@/core/gate";
+import type { DecisionCache, DecisionResult } from "@/core/contracts";
 
 interface Entry {
   value: DecisionResult;

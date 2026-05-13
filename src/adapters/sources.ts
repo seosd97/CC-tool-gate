@@ -3,12 +3,14 @@ import { extname, join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import {
   type CompiledStaticRules,
+  compileStaticRules,
   type Policy,
+  type PolicySnapshot,
   parsePolicy,
   StaticRules,
-  sanitizeStaticRules,
   type ValidationWarning,
 } from "@/core/policy";
+import { getErrorMessage } from "@/lib/errors";
 import { log } from "@/lib/logger";
 
 const INDEX_FILES = new Set(["index.yaml", "index.yml"]);
@@ -28,8 +30,7 @@ export async function loadPoliciesFromDir(
   try {
     entries = await readdir(dir);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    log.warn({ dir, error: msg }, "Policy directory unreadable");
+    log.warn({ dir, error: getErrorMessage(err) }, "Policy directory unreadable");
     return { policies: [], rules };
   }
   for (const name of entries.sort()) {
@@ -39,7 +40,7 @@ export async function loadPoliciesFromDir(
       const parsed = StaticRules.safeParse(parseYaml(raw));
       if (parsed.success) {
         const warnings: ValidationWarning[] = [];
-        rules = sanitizeStaticRules(parsed.data, full, warnings);
+        rules = compileStaticRules(parsed.data, full, warnings);
         for (const w of warnings) {
           if (onWarn) onWarn(w);
           else
@@ -68,7 +69,7 @@ export async function loadPoliciesFromDir(
 }
 
 export interface PolicyStore {
-  snapshot(): { policies: Policy[]; rules: CompiledStaticRules };
+  snapshot(): PolicySnapshot;
   reload(): Promise<void>;
 }
 

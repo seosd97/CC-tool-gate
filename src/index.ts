@@ -4,16 +4,14 @@ import { createPolicyStore } from "@/adapters/sources";
 import { createApp } from "@/api/app";
 import { type AppConfig, loadConfig } from "@/config";
 import { createMemoryCache } from "@/core/cache";
+import { getErrorMessage } from "@/lib/errors";
 import { log, setLogLevel } from "@/lib/logger";
 
 let cfg: AppConfig;
 try {
   cfg = loadConfig();
 } catch (err) {
-  log.error(
-    { error: err instanceof Error ? err.message : String(err) },
-    "Failed to load configuration",
-  );
+  log.error({ error: getErrorMessage(err) }, "Failed to load configuration");
   process.exit(1);
 }
 
@@ -65,10 +63,7 @@ const shutdown = async (signal: string): Promise<void> => {
   try {
     await server.stop(true);
   } catch (err) {
-    log.warn(
-      { error: err instanceof Error ? err.message : String(err) },
-      "Server stop reported error",
-    );
+    log.warn({ error: getErrorMessage(err) }, "Server stop reported error");
   }
   try {
     await sink.flush?.();

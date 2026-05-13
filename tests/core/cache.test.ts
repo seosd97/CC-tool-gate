@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { createMemoryCache } from "@/core/cache";
-import type { DecisionResult } from "@/core/gate";
+import type { DecisionResult } from "@/core/contracts";
 
 const v = (decision: DecisionResult["decision"]): DecisionResult => ({
   decision,
   reason: "x",
   source: "llm",
-  matched_policies: [],
+  matchedPolicies: [],
 });
 
 describe("memory cache", () => {

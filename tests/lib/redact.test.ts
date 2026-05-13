@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { redact, redactString } from "@/core/redact";
+import { redact, redactString } from "@/lib/redact";
 
 describe("redactString", () => {
   test("scrubs Authorization Bearer header", () => {

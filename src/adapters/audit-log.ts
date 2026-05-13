@@ -1,6 +1,6 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import type { AuditRecord, AuditSink } from "@/core/gate";
+import type { AuditRecord, AuditSink } from "@/core/contracts";
 
 export interface JsonlSinkOptions {
   logsDir: string;
