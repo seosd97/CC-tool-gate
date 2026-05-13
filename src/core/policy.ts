@@ -47,14 +47,14 @@ export const StaticRules = z.object({
 export type StaticRules = z.infer<typeof StaticRules>;
 
 export interface ValidationWarning {
-  context: string;
+  sourceContext: string;
   pattern: string;
   error: string;
 }
 
 function validatePatterns(
   patterns: readonly string[],
-  context: string,
+  sourceContext: string,
   warnings: ValidationWarning[],
 ): RegExp[] {
   const out: RegExp[] = [];
@@ -62,7 +62,7 @@ function validatePatterns(
     try {
       out.push(new RegExp(p, "i"));
     } catch (err) {
-      warnings.push({ context, pattern: p, error: getErrorMessage(err) });
+      warnings.push({ sourceContext, pattern: p, error: getErrorMessage(err) });
     }
   }
   return out;

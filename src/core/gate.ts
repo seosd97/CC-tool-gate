@@ -68,60 +68,63 @@ function checkStaticRules(
   return null;
 }
 
+async function computeDecision(
+  deps: GateDeps,
+  req: PreToolUseRequest,
+): Promise<{ result: DecisionResult; cacheHit: boolean }> {
+  const { policies, rules } = deps.getSnapshot();
+
+  const staticResult = checkStaticRules(req, rules);
+  if (staticResult) return { result: staticResult, cacheHit: false };
+
+  const key = makeCacheKey(req);
+  const cached = deps.cache.get(key);
+  if (cached) return { result: { ...cached, source: "cache" }, cacheHit: true };
+
+  if (policies.length === 0) {
+    return {
+      result: {
+        decision: "allow",
+        reason: "No policies loaded; defaulting to allow",
+        source: "fallback",
+        matchedPolicies: [],
+      },
+      cacheHit: false,
+    };
+  }
+
+  const policyNames = policies.map((p) => p.name);
+  try {
+    const llmResult = await deps.llm.judge({ request: req, policies });
+    const result: DecisionResult = {
+      decision: llmResult.decision,
+      reason: llmResult.reason,
+      source: "llm",
+      matchedPolicies: policyNames,
+    };
+    deps.cache.set(key, result);
+    return { result, cacheHit: false };
+  } catch (err) {
+    return {
+      result: {
+        decision: policies[0]?.default_decision ?? "ask",
+        reason: `LLM call failed (${getErrorMessage(err)}); using policy default_decision`,
+        source: "fallback",
+        matchedPolicies: policyNames,
+      },
+      cacheHit: false,
+    };
+  }
+}
+
 export function createGate(deps: GateDeps) {
   const now = deps.now ?? (() => new Date());
 
   return {
     async decide(req: PreToolUseRequest): Promise<DecisionResult> {
       const t0 = performance.now();
-      const { policies, rules } = deps.getSnapshot();
-
-      const staticResult = checkStaticRules(req, rules);
-      if (staticResult) {
-        await writeAudit(deps.sink, req, staticResult, false, t0, now);
-        return staticResult;
-      }
-
-      const key = makeCacheKey(req);
-      const cached = deps.cache.get(key);
-      if (cached) {
-        const result: DecisionResult = { ...cached, source: "cache" };
-        await writeAudit(deps.sink, req, result, true, t0, now);
-        return result;
-      }
-
-      if (policies.length === 0) {
-        const result: DecisionResult = {
-          decision: "allow",
-          reason: "No policies loaded; defaulting to allow",
-          source: "fallback",
-          matchedPolicies: [],
-        };
-        await writeAudit(deps.sink, req, result, false, t0, now);
-        return result;
-      }
-
-      let result: DecisionResult;
-      try {
-        const llmResult = await deps.llm.judge({ request: req, policies });
-        result = {
-          decision: llmResult.decision,
-          reason: llmResult.reason,
-          source: "llm",
-          matchedPolicies: policies.map((p) => p.name),
-        };
-        deps.cache.set(key, result);
-      } catch (err) {
-        const fallback = policies[0]?.default_decision ?? "ask";
-        result = {
-          decision: fallback,
-          reason: `LLM call failed (${getErrorMessage(err)}); using policy default_decision`,
-          source: "fallback",
-          matchedPolicies: policies.map((p) => p.name),
-        };
-      }
-
-      await writeAudit(deps.sink, req, result, false, t0, now);
+      const { result, cacheHit } = await computeDecision(deps, req);
+      await writeAudit(deps.sink, req, result, cacheHit, t0, now);
       return result;
     },
   };

@@ -46,7 +46,7 @@ export async function loadPoliciesFromDir(
           else
             log.warn(
               {
-                context: w.context,
+                sourceContext: w.sourceContext,
                 pattern: w.pattern,
                 error: w.error,
               },
@@ -91,7 +91,7 @@ export function createPolicyStore(dirs: string[]): PolicyStore {
         const { policies: ps, rules: r } = await loadPoliciesFromDir(dir, (w) => {
           log.warn(
             {
-              context: w.context,
+              sourceContext: w.sourceContext,
               pattern: w.pattern,
               error: w.error,
             },
